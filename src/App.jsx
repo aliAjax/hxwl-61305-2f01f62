@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Radio, Plus, Search, Trash2, RotateCcw, CheckCircle2, AlertTriangle, ClipboardList, CalendarDays, Users, UserPlus, Phone, Pencil, X, ChevronLeft, ChevronRight, Calendar, FileUp, XCircle } from 'lucide-react';
+import { Radio, Plus, Search, Trash2, RotateCcw, CheckCircle2, AlertTriangle, ClipboardList, CalendarDays, Users, UserPlus, Phone, Pencil, X, ChevronLeft, ChevronRight, Calendar, FileUp, XCircle, ShieldAlert, Clock, Layers, MinusCircle } from 'lucide-react';
 import './App.css';
 
 const appConfig = {
@@ -81,7 +81,7 @@ const appConfig = {
       "client": "北城眼镜",
       "adName": "暑期配镜",
       "date": "2026-06-13",
-      "slot": "18:00-19:00",
+      "slot": "08:00-09:00",
       "plays": "3",
       "amount": "2800",
       "status": "待确认"
@@ -89,10 +89,37 @@ const appConfig = {
     {
       "client": "云上烘焙",
       "adName": "新品上线",
+      "date": "2026-06-13",
+      "slot": "08:00-09:00",
+      "plays": "2",
+      "amount": "1600",
+      "status": "已排期"
+    },
+    {
+      "client": "星河电器",
+      "adName": "年中大促",
+      "date": "2026-06-13",
+      "slot": "18:00-19:00",
+      "plays": "5",
+      "amount": "5000",
+      "status": "已排期"
+    },
+    {
+      "client": "绿洲健身",
+      "adName": "夏季会员招募",
+      "date": "2026-06-13",
+      "slot": "18:00-19:00",
+      "plays": "3",
+      "amount": "3200",
+      "status": "待确认"
+    },
+    {
+      "client": "锦绣珠宝",
+      "adName": "父亲节特惠",
       "date": "2026-06-14",
       "slot": "12:00-13:00",
       "plays": "2",
-      "amount": "1600",
+      "amount": "8000",
       "status": "已播完"
     }
   ],
@@ -348,12 +375,6 @@ function App() {
       timeline: [{ status: form.status || appConfig.primaryStatus, at: today, by: '录入' }]
     };
 
-    if (appConfig.conflict === 'date-slot' && records.some((item) => item.date === nextRecord.date && item.slot === nextRecord.slot)) {
-      nextRecord.conflict = true;
-    }
-    if (appConfig.conflict === 'bed-time' && hasOverlap(nextRecord, records)) {
-      nextRecord.conflict = true;
-    }
     if (appConfig.chart) {
       const temp = Number(nextRecord.temperature || 0);
       nextRecord.temps = [temp];
@@ -416,12 +437,6 @@ function App() {
       });
   }, [records, filters, selectedDate]);
 
-  const metrics = [
-    { label: "排期数", value: records.length },
-    { label: "今日广告", value: records.filter((item) => item.date === today).length },
-    { label: "合同额", value: money(records.reduce((sum, item) => sum + Number(item.amount || 0), 0)) },
-  ];
-
   const groupedByDate = useMemo(() => {
     return filteredRecords.reduce((acc, item) => {
       const key = item[appConfig.dateKey] || item.date || item.enrollDate || '未排期';
@@ -429,6 +444,18 @@ function App() {
       return acc;
     }, {});
   }, [filteredRecords]);
+
+  const groupedByDateSlot = useMemo(() => {
+    const result = {};
+    records.forEach((item) => {
+      const dateKey = item.date || '未排期';
+      const slotKey = item.slot || '未排期';
+      if (!result[dateKey]) result[dateKey] = {};
+      if (!result[dateKey][slotKey]) result[dateKey][slotKey] = [];
+      result[dateKey][slotKey].push(item);
+    });
+    return result;
+  }, [records]);
 
   const directory = useMemo(() => {
     return records.reduce((acc, item) => {
@@ -484,6 +511,50 @@ function App() {
     return stats;
   }, [records]);
 
+  const conflictGroups = useMemo(() => {
+    const slotMap = {};
+    records.forEach((item) => {
+      if (!item.date || !item.slot) return;
+      const key = `${item.date}::${item.slot}`;
+      (slotMap[key] ||= []).push(item);
+    });
+    const groups = [];
+    Object.entries(slotMap).forEach(([key, items]) => {
+      const nonCoPlay = items.filter((r) => !r.coPlay);
+      if (nonCoPlay.length > 1) {
+        const [date, slot] = key.split('::');
+        const totalPlays = nonCoPlay.reduce((sum, r) => sum + Number(r.plays || 0), 0);
+        const totalAmount = nonCoPlay.reduce((sum, r) => sum + Number(r.amount || 0), 0);
+        const clients = [...new Set(nonCoPlay.map((r) => r.client))];
+        groups.push({
+          key,
+          date,
+          slot,
+          items: nonCoPlay,
+          totalPlays,
+          totalAmount,
+          clients,
+          conflictCount: nonCoPlay.length
+        });
+      }
+    });
+    groups.sort((a, b) => a.date.localeCompare(b.date) || a.slot.localeCompare(b.slot));
+    return groups;
+  }, [records]);
+
+  const isConflicted = useMemo(() => {
+    const set = new Set();
+    conflictGroups.forEach((g) => g.items.forEach((item) => set.add(item.id)));
+    return set;
+  }, [conflictGroups]);
+
+  const metrics = [
+    { label: "排期数", value: records.length },
+    { label: "今日广告", value: records.filter((item) => item.date === today).length },
+    { label: "冲突", value: conflictGroups.length },
+    { label: "合同额", value: money(records.reduce((sum, item) => sum + Number(item.amount || 0), 0)) },
+  ];
+
   function toggleDateFilter(date) {
     if (selectedDate === date) {
       setSelectedDate(null);
@@ -513,24 +584,18 @@ function App() {
 
   function handleConfirmImport() {
     if (!importResult || !importResult.rows.length) return;
-    const newRecords = importResult.rows.map((row) => {
-      const record = {
-        id: uid(),
-        client: row.client || '',
-        adName: row.adName || '',
-        date: row.date || '',
-        slot: row.slot || '',
-        plays: row.plays || '',
-        amount: row.amount || '',
-        status: appConfig.primaryStatus,
-        createdAt: new Date().toISOString(),
-        timeline: [{ status: appConfig.primaryStatus, at: today, by: '导入' }],
-      };
-      if (records.some((r) => r.date === record.date && r.slot === record.slot)) {
-        record.conflict = true;
-      }
-      return record;
-    });
+    const newRecords = importResult.rows.map((row) => ({
+      id: uid(),
+      client: row.client || '',
+      adName: row.adName || '',
+      date: row.date || '',
+      slot: row.slot || '',
+      plays: row.plays || '',
+      amount: row.amount || '',
+      status: appConfig.primaryStatus,
+      createdAt: new Date().toISOString(),
+      timeline: [{ status: appConfig.primaryStatus, at: today, by: '导入' }],
+    }));
     persist([...newRecords, ...records]);
     setImportCsv('');
     setImportResult(null);
@@ -539,6 +604,43 @@ function App() {
   function handleClearImport() {
     setImportCsv('');
     setImportResult(null);
+  }
+
+  const [reslotTarget, setReslotTarget] = useState(null);
+  const [reslotValue, setReslotValue] = useState('');
+
+  function resolveByReslot(recordId) {
+    setReslotTarget(recordId);
+    setReslotValue('');
+  }
+
+  function confirmReslot() {
+    if (!reslotTarget || !reslotValue) return;
+    const next = records.map((item) => item.id === reslotTarget ? { ...item, slot: reslotValue } : item);
+    persist(next);
+    if (selected?.id === reslotTarget) setSelected(next.find((item) => item.id === reslotTarget));
+    setReslotTarget(null);
+    setReslotValue('');
+  }
+
+  function resolveByCoPlay(groupKey) {
+    const next = records.map((item) => {
+      const key = `${item.date}::${item.slot}`;
+      if (key === groupKey) return { ...item, coPlay: true };
+      return item;
+    });
+    persist(next);
+    if (selected) setSelected(next.find((item) => item.id === selected.id));
+  }
+
+  function resolveByDelete(recordId) {
+    const next = records.filter((item) => item.id !== recordId);
+    persist(next);
+    if (selected?.id === recordId) setSelected(null);
+    if (reslotTarget === recordId) {
+      setReslotTarget(null);
+      setReslotValue('');
+    }
   }
 
   return (
@@ -618,7 +720,7 @@ function App() {
 
           <div className="records">
             {filteredRecords.map((item) => (
-              <article className={'record ' + (item.conflict || hasOverlap(item, records) ? 'conflict' : '')} key={item.id} onClick={() => setSelected(item)}>
+              <article className={'record ' + (isConflicted.has(item.id) ? 'conflict' : '')} key={item.id} onClick={() => setSelected(item)}>
                 <div className="record-head">
                   <div>
                     <h3>{item.adName}</h3>
@@ -627,11 +729,54 @@ function App() {
                   <span className={'status ' + statusClass(item.status)}>{item.status}</span>
                 </div>
                 <p className="record-detail">{`播放${item.plays}次｜合同${money(Number(item.amount || 0))}`}</p>
-                {(item.conflict || hasOverlap(item, records)) && <div className="warning"><AlertTriangle size={15} />发现冲突</div>}
+                {isConflicted.has(item.id) && <div className="warning"><AlertTriangle size={15} />发现冲突</div>}
+                {item.coPlay && <div className="conflict-badge-co"><Layers size={12} />可并播</div>}
                 <div className="actions" onClick={(event) => event.stopPropagation()}>
                   {appConfig.statuses.map((status) => (
                     <button key={status} type="button" onClick={() => updateStatus(item.id, status)}>{status}</button>
                   ))}
+                  {isConflicted.has(item.id) && (
+                    <>
+                      {reslotTarget === item.id ? (
+                        <div className="reslot-inline">
+                          <select value={reslotValue} onChange={(e) => setReslotValue(e.target.value)}>
+                            <option value="">选择新时段</option>
+                            {appConfig.fields.find((f) => f.key === 'slot')?.options
+                              .filter((opt) => opt !== item.slot)
+                              .map((opt) => <option key={opt}>{opt}</option>)}
+                          </select>
+                          <button className="primary compact" type="button" onClick={confirmReslot} disabled={!reslotValue}>
+                            <CheckCircle2 size={14} />
+                          </button>
+                          <button className="cancel-btn compact" type="button" onClick={() => { setReslotTarget(null); setReslotValue(''); }}>
+                            <X size={14} />
+                          </button>
+                        </div>
+                      ) : (
+                        <button type="button" className="reslot-btn compact-action" onClick={() => resolveByReslot(item.id)}>
+                          <Clock size={14} />改时段
+                        </button>
+                      )}
+                      {!item.coPlay && (
+                        <button type="button" className="co-play-single-btn compact-action" onClick={() => {
+                          const next = records.map((r) => r.id === item.id ? { ...r, coPlay: true } : r);
+                          persist(next);
+                          if (selected?.id === item.id) setSelected(next.find((r) => r.id === item.id));
+                        }}>
+                          <Layers size={14} />可并播
+                        </button>
+                      )}
+                    </>
+                  )}
+                  {item.coPlay && (
+                    <button type="button" className="co-play-single-btn compact-action" onClick={() => {
+                      const next = records.map((r) => r.id === item.id ? { ...r, coPlay: false } : r);
+                      persist(next);
+                      if (selected?.id === item.id) setSelected(next.find((r) => r.id === item.id));
+                    }}>
+                      <XCircle size={14} />取消并播
+                    </button>
+                  )}
                   {appConfig.action === 'copyRecipe' && <button type="button" onClick={() => duplicateRecord(item)}><RotateCcw size={14} />复制</button>}
                   {appConfig.chart && <button type="button" onClick={() => addTemperature(item)}>加温度</button>}
                   <button className="ghost-danger" type="button" onClick={() => removeRecord(item.id)}><Trash2 size={14} /></button>
@@ -743,6 +888,105 @@ function App() {
             </div>
           </div>
         )}
+      </section>
+
+      <section className="conflict-section">
+        <div className="panel">
+          <div className="panel-title">
+            <ShieldAlert size={18} />
+            <h2>冲突处理中心</h2>
+            {conflictGroups.length > 0 && (
+              <span className="conflict-summary-badge">待处理 {conflictGroups.length} 组</span>
+            )}
+          </div>
+          <p className="hint">同一天同一时段存在多条广告时，视为冲突。以下分组列出所有冲突，请逐组处理。</p>
+          {conflictGroups.length === 0 ? (
+            <div className="conflict-empty">
+              <CheckCircle2 size={28} />
+              <span>当前无时段冲突，所有排期正常。</span>
+            </div>
+          ) : (
+            <div className="conflict-groups">
+              {conflictGroups.map((group) => (
+                <div key={group.key} className="conflict-group">
+                  <div className="conflict-group-head">
+                    <div className="conflict-group-label">
+                      <AlertTriangle size={16} />
+                      <strong>{group.date}</strong>
+                      <span className="conflict-slot-tag">{group.slot}</span>
+                      <span className="conflict-count">{group.conflictCount}条冲突</span>
+                    </div>
+                    <div className="conflict-group-actions">
+                      <button className="co-play-btn" type="button" onClick={() => resolveByCoPlay(group.key)}>
+                        <Layers size={14} />整组标记可并播
+                      </button>
+                    </div>
+                  </div>
+                  <div className="conflict-group-summary">
+                    <div className="summary-item">
+                      <span className="summary-label">涉及客户</span>
+                      <span className="summary-value">{group.clients.join('、')}</span>
+                    </div>
+                    <div className="summary-item">
+                      <span className="summary-label">总播放次数</span>
+                      <span className="summary-value">{group.totalPlays}次</span>
+                    </div>
+                    <div className="summary-item">
+                      <span className="summary-label">总合同额</span>
+                      <span className="summary-value amount">{money(group.totalAmount)}</span>
+                    </div>
+                  </div>
+                  <div className="conflict-items">
+                    {group.items.map((item) => (
+                      <div key={item.id} className="conflict-item" onClick={() => setSelected(item)}>
+                        <div className="conflict-item-info">
+                          <h4>{item.adName}</h4>
+                          <p>客户：{item.client}</p>
+                          <p>播放次数：{item.plays}次｜合同额：{money(Number(item.amount || 0))}</p>
+                          <span className={'status ' + statusClass(item.status)}>{item.status}</span>
+                        </div>
+                        <div className="conflict-item-actions" onClick={(e) => e.stopPropagation()}>
+                          {reslotTarget === item.id ? (
+                            <div className="reslot-inline">
+                              <select value={reslotValue} onChange={(e) => setReslotValue(e.target.value)}>
+                                <option value="">选择新时段</option>
+                                {appConfig.fields.find((f) => f.key === 'slot')?.options
+                                  .filter((opt) => opt !== group.slot)
+                                  .map((opt) => <option key={opt}>{opt}</option>)}
+                              </select>
+                              <button className="primary compact" type="button" onClick={confirmReslot} disabled={!reslotValue}>
+                                <CheckCircle2 size={14} />确认
+                              </button>
+                              <button className="cancel-btn compact" type="button" onClick={() => setReslotTarget(null)}>
+                                <X size={14} />
+                              </button>
+                            </div>
+                          ) : (
+                            <>
+                              <button type="button" className="reslot-btn" onClick={() => resolveByReslot(item.id)}>
+                                <Clock size={14} />改时段
+                              </button>
+                              <button type="button" className="co-play-single-btn" onClick={() => {
+                                const next = records.map((r) => r.id === item.id ? { ...r, coPlay: true } : r);
+                                persist(next);
+                                if (selected?.id === item.id) setSelected(next.find((r) => r.id === item.id));
+                              }}>
+                                <Layers size={14} />标记可并播
+                              </button>
+                              <button type="button" className="delete-btn" onClick={() => resolveByDelete(item.id)}>
+                                <MinusCircle size={14} />删除
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </section>
 
       <section className="archive-section">
@@ -887,10 +1131,48 @@ function App() {
             </div>
           ) : (
             <div className="date-groups">
-              {Object.entries(groupedByDate).map(([date, items]) => (
+              {Object.entries(groupedByDateSlot).map(([date, slots]) => (
                 <div key={date} className="date-group">
-                  <strong>{date}</strong>
-                  <span>{items.length}条记录</span>
+                  <div className="date-group-head">
+                    <strong>{date}</strong>
+                    <span className="date-group-total">{Object.values(slots).flat().length}条记录</span>
+                  </div>
+                  <div className="slot-groups">
+                    {Object.entries(slots).map(([slot, slotItems]) => {
+                      const nonCoPlayItems = slotItems.filter((r) => !r.coPlay);
+                      const hasConflict = nonCoPlayItems.length > 1;
+                      const hasCoPlay = slotItems.some((r) => r.coPlay);
+                      return (
+                        <div key={slot} className={`slot-group ${hasConflict ? 'slot-conflict' : ''} ${hasCoPlay ? 'slot-coplay' : ''}`}>
+                          <div className="slot-group-head">
+                            <span className="slot-name">{slot}</span>
+                            {hasConflict && (
+                              <span className="slot-conflict-tag">
+                                <AlertTriangle size={12} />{nonCoPlayItems.length}条冲突
+                              </span>
+                            )}
+                            {hasCoPlay && (
+                              <span className="slot-coplay-tag">
+                                <Layers size={12} />可并播
+                              </span>
+                            )}
+                          </div>
+                          <div className="slot-ad-list">
+                            {slotItems.map((item) => (
+                              <div
+                                key={item.id}
+                                className={`slot-ad-item ${isConflicted.has(item.id) ? 'ad-conflict' : ''} ${item.coPlay ? 'ad-coplay' : ''}`}
+                                onClick={() => setSelected(item)}
+                              >
+                                <span className="ad-name">{item.adName}</span>
+                                <span className="ad-client">{item.client}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               ))}
             </div>
@@ -907,6 +1189,63 @@ function App() {
               <h3>{selected.adName}</h3>
               <p>{`${selected.client} · ${selected.date} · ${selected.slot}`}</p>
               <p>{`播放${selected.plays}次｜合同${money(Number(selected.amount || 0))}`}</p>
+              <p><span className={'status ' + statusClass(selected.status)}>{selected.status}</span></p>
+              {isConflicted.has(selected.id) && <div className="warning"><AlertTriangle size={15} />时段冲突</div>}
+              {selected.coPlay && <div className="conflict-badge-co"><Layers size={12} />已标记可并播</div>}
+
+              {isConflicted.has(selected.id) && (
+                <div className="detail-conflict-actions">
+                  <div className="detail-section-title">冲突处理</div>
+                  {reslotTarget === selected.id ? (
+                    <div className="reslot-inline">
+                      <select value={reslotValue} onChange={(e) => setReslotValue(e.target.value)}>
+                        <option value="">选择新时段</option>
+                        {appConfig.fields.find((f) => f.key === 'slot')?.options
+                          .filter((opt) => opt !== selected.slot)
+                          .map((opt) => <option key={opt}>{opt}</option>)}
+                      </select>
+                      <button className="primary compact" type="button" onClick={confirmReslot} disabled={!reslotValue}>
+                        <CheckCircle2 size={14} />确认
+                      </button>
+                      <button className="cancel-btn compact" type="button" onClick={() => { setReslotTarget(null); setReslotValue(''); }}>
+                        <X size={14} />取消
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="detail-action-btns">
+                      <button type="button" className="reslot-btn" onClick={() => resolveByReslot(selected.id)}>
+                        <Clock size={14} />改时段
+                      </button>
+                      <button type="button" className="co-play-single-btn" onClick={() => {
+                        const next = records.map((r) => r.id === selected.id ? { ...r, coPlay: true } : r);
+                        persist(next);
+                        setSelected(next.find((r) => r.id === selected.id));
+                      }}>
+                        <Layers size={14} />标记可并播
+                      </button>
+                      <button type="button" className="delete-btn" onClick={() => resolveByDelete(selected.id)}>
+                        <MinusCircle size={14} />删除
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {selected.coPlay && !isConflicted.has(selected.id) && (
+                <div className="detail-conflict-actions">
+                  <div className="detail-section-title">可并播管理</div>
+                  <div className="detail-action-btns">
+                    <button type="button" className="co-play-single-btn" onClick={() => {
+                      const next = records.map((r) => r.id === selected.id ? { ...r, coPlay: false } : r);
+                      persist(next);
+                      setSelected(next.find((r) => r.id === selected.id));
+                    }}>
+                      <XCircle size={14} />取消可并播
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {selected.temps && (
                 <div className="temp-chart">
                   {selected.temps.map((value, index) => <i key={index} style={{ height: Math.max(10, 56 + Number(value) * 8) }} title={String(value)} />)}
