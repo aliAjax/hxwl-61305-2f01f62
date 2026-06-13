@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Radio, Plus, Search, Trash2, RotateCcw, CheckCircle2, AlertTriangle, ClipboardList, CalendarDays } from 'lucide-react';
+import { Radio, Plus, Search, Trash2, RotateCcw, CheckCircle2, AlertTriangle, ClipboardList, CalendarDays, Users, UserPlus, Phone, Pencil, X } from 'lucide-react';
 import './App.css';
 
 const appConfig = {
@@ -140,6 +140,14 @@ const appConfig = {
   }
 };
 
+const customerStorage = 'hxwl-61305-customer-archive';
+
+const defaultCustomers = [
+  { name: '蓝海家居', contact: '张经理', phone: '138-0001-0001', preferredSlot: '08:00-09:00' },
+  { name: '北城眼镜', contact: '李总', phone: '139-0002-0002', preferredSlot: '18:00-19:00' },
+  { name: '云上烘焙', contact: '王店长', phone: '137-0003-0003', preferredSlot: '12:00-13:00' },
+];
+
 const today = new Date().toISOString().slice(0, 10);
 
 function uid() {
@@ -160,6 +168,18 @@ function loadRecords() {
     }
   }
   return withIds(appConfig.seed);
+}
+
+function loadCustomers() {
+  const raw = localStorage.getItem(customerStorage);
+  if (raw) {
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return defaultCustomers.map((c) => ({ ...c, id: uid() }));
+    }
+  }
+  return defaultCustomers.map((c) => ({ ...c, id: uid() }));
 }
 
 function avg(numbers) {
@@ -209,10 +229,63 @@ function App() {
   const [form, setForm] = useState(appConfig.defaultValues);
   const [filters, setFilters] = useState({ query: '', status: '全部' });
   const [selected, setSelected] = useState(null);
+  const [customers, setCustomers] = useState(loadCustomers);
+  const [customerForm, setCustomerForm] = useState({ name: '', contact: '', phone: '', preferredSlot: '' });
+  const [editingCustomer, setEditingCustomer] = useState(null);
 
   function persist(next) {
     setRecords(next);
     localStorage.setItem(appConfig.storage, JSON.stringify(next));
+  }
+
+  function persistCustomers(next) {
+    setCustomers(next);
+    localStorage.setItem(customerStorage, JSON.stringify(next));
+  }
+
+  function addCustomer(event) {
+    event.preventDefault();
+    if (!customerForm.name.trim()) return;
+    const newCustomer = { id: uid(), ...customerForm };
+    persistCustomers([...customers, newCustomer]);
+    setCustomerForm({ name: '', contact: '', phone: '', preferredSlot: '' });
+  }
+
+  function startEditCustomer(customer) {
+    setEditingCustomer(customer.id);
+    setCustomerForm({ name: customer.name, contact: customer.contact, phone: customer.phone, preferredSlot: customer.preferredSlot || '' });
+  }
+
+  function saveEditCustomer(event) {
+    event.preventDefault();
+    if (!customerForm.name.trim()) return;
+    const next = customers.map((c) => c.id === editingCustomer ? { ...c, ...customerForm } : c);
+    persistCustomers(next);
+    setEditingCustomer(null);
+    setCustomerForm({ name: '', contact: '', phone: '', preferredSlot: '' });
+  }
+
+  function cancelEditCustomer() {
+    setEditingCustomer(null);
+    setCustomerForm({ name: '', contact: '', phone: '', preferredSlot: '' });
+  }
+
+  function removeCustomer(id) {
+    persistCustomers(customers.filter((c) => c.id !== id));
+    if (editingCustomer === id) cancelEditCustomer();
+  }
+
+  function handleClientSelect(event) {
+    const name = event.target.value;
+    if (!name) return;
+    const customer = customers.find((c) => c.name === name);
+    if (customer) {
+      setForm({ ...form, client: customer.name, slot: customer.preferredSlot || form.slot });
+    }
+  }
+
+  function customerAmount(name) {
+    return records.filter((r) => r.client === name).reduce((sum, r) => sum + Number(r.amount || 0), 0);
   }
 
   function addRecord(event) {
@@ -347,7 +420,15 @@ function App() {
             {appConfig.fields.map((field) => (
               <label key={field.key} className={field.type === 'textarea' ? 'wide' : ''}>
                 <span>{field.label}</span>
-                {field.type === 'textarea' ? (
+                {field.key === 'client' ? (
+                  <div className="client-select-group">
+                    <select className="client-select" value="" onChange={handleClientSelect}>
+                      <option value="">从档案选择...</option>
+                      {customers.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}
+                    </select>
+                    <input type={field.type} value={form[field.key] || ''} onChange={(event) => setForm({ ...form, [field.key]: event.target.value })} placeholder={field.placeholder} />
+                  </div>
+                ) : field.type === 'textarea' ? (
                   <textarea value={form[field.key] || ''} onChange={(event) => setForm({ ...form, [field.key]: event.target.value })} placeholder={field.placeholder} />
                 ) : field.type === 'select' ? (
                   <select value={form[field.key] || ''} onChange={(event) => setForm({ ...form, [field.key]: event.target.value })}>
@@ -405,6 +486,66 @@ function App() {
             ))}
           </div>
         </section>
+      </section>
+
+      <section className="archive-section">
+        <div className="panel archive-form-panel">
+          <div className="panel-title">
+            <Users size={18} />
+            <h2>客户档案</h2>
+          </div>
+          <form onSubmit={editingCustomer ? saveEditCustomer : addCustomer}>
+            <div className="form-grid">
+              <label>
+                <span>客户名称</span>
+                <input type="text" value={customerForm.name} onChange={(event) => setCustomerForm({ ...customerForm, name: event.target.value })} placeholder="蓝海家居" required />
+              </label>
+              <label>
+                <span>联系人</span>
+                <input type="text" value={customerForm.contact} onChange={(event) => setCustomerForm({ ...customerForm, contact: event.target.value })} placeholder="张经理" />
+              </label>
+              <label>
+                <span>电话</span>
+                <input type="tel" value={customerForm.phone} onChange={(event) => setCustomerForm({ ...customerForm, phone: event.target.value })} placeholder="138-0000-0000" />
+              </label>
+              <label>
+                <span>常用广告时段</span>
+                <select value={customerForm.preferredSlot} onChange={(event) => setCustomerForm({ ...customerForm, preferredSlot: event.target.value })}>
+                  <option value="">不限</option>
+                  {appConfig.fields.find((f) => f.key === 'slot')?.options.map((opt) => <option key={opt}>{opt}</option>)}
+                </select>
+              </label>
+            </div>
+            <div className="archive-form-actions">
+              <button className="primary" type="submit">
+                {editingCustomer ? <><CheckCircle2 size={18} />保存修改</> : <><UserPlus size={18} />添加客户</>}
+              </button>
+              {editingCustomer && <button type="button" className="cancel-btn" onClick={cancelEditCustomer}><X size={18} />取消</button>}
+            </div>
+          </form>
+        </div>
+
+        <div className="panel archive-list-panel">
+          <div className="customer-list">
+            {customers.length === 0 && <p className="empty">暂无客户档案，请在左侧添加。</p>}
+            {customers.map((customer) => (
+              <article className="customer-card" key={customer.id}>
+                <div className="customer-head">
+                  <div>
+                    <h3>{customer.name}</h3>
+                    <p>{customer.contact}<Phone size={12} />{customer.phone}</p>
+                  </div>
+                  <span className="customer-slot">{customer.preferredSlot || '不限'}</span>
+                </div>
+                <p className="customer-amount">历史合同额：{money(customerAmount(customer.name))}</p>
+                <div className="actions" onClick={(event) => event.stopPropagation()}>
+                  <button type="button" onClick={() => startEditCustomer(customer)}><Pencil size={14} />编辑</button>
+                  <button className="ghost-danger" type="button" onClick={() => removeCustomer(customer.id)}><Trash2 size={14} /></button>
+                </div>
+              </article>
+            ))}
+          </div>
+        </div>
       </section>
 
       <section className="insights">
