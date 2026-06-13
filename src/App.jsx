@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Radio, Plus, Search, Trash2, RotateCcw, CheckCircle2, AlertTriangle, ClipboardList, CalendarDays, Users, UserPlus, Phone, Pencil, X, ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
+import { Radio, Plus, Search, Trash2, RotateCcw, CheckCircle2, AlertTriangle, ClipboardList, CalendarDays, Users, UserPlus, Phone, Pencil, X, ChevronLeft, ChevronRight, Calendar, FileUp, XCircle } from 'lucide-react';
 import './App.css';
 
 const appConfig = {
@@ -219,6 +219,42 @@ function hasOverlap(target, records) {
   return records.some((item) => item.id !== target.id && item.bed === target.bed && item.date === target.date && target.start < item.end && target.end > item.start);
 }
 
+const csvColumnMap = {
+  '客户': 'client',
+  '广告名称': 'adName',
+  '投放日期': 'date',
+  '时段': 'slot',
+  '播放次数': 'plays',
+  '合同金额': 'amount',
+};
+
+const requiredCsvColumns = ['客户', '广告名称', '投放日期', '时段'];
+
+function parseCsv(text) {
+  const lines = text.trim().split(/\r?\n/).filter((line) => line.trim());
+  if (lines.length < 2) return { rows: [], headers: [], missingHeaders: [] };
+
+  const headers = lines[0].split(',').map((h) => h.trim());
+  const knownHeaders = Object.keys(csvColumnMap);
+  const missingHeaders = requiredCsvColumns.filter((h) => !headers.includes(h));
+
+  const rows = [];
+  for (let i = 1; i < lines.length; i++) {
+    const values = lines[i].split(',').map((v) => v.trim());
+    const row = {};
+    headers.forEach((header, idx) => {
+      const key = csvColumnMap[header];
+      if (key) row[key] = values[idx] || '';
+    });
+    const missingFields = requiredCsvColumns
+      .filter((h) => !headers.includes(h) || !row[csvColumnMap[h]])
+      .map((h) => h);
+    rows.push({ ...row, _rowIndex: i, _missingFields: missingFields });
+  }
+
+  return { rows, headers, missingHeaders };
+}
+
 function statusClass(status) {
   const index = appConfig.statuses.indexOf(status);
   return ['status-a', 'status-b', 'status-c', 'status-d'][index] || 'status-a';
@@ -234,6 +270,8 @@ function App() {
   const [editingCustomer, setEditingCustomer] = useState(null);
   const [selectedDate, setSelectedDate] = useState(null);
   const [weekOffset, setWeekOffset] = useState(0);
+  const [importCsv, setImportCsv] = useState('');
+  const [importResult, setImportResult] = useState(null);
 
   function persist(next) {
     setRecords(next);
@@ -454,6 +492,55 @@ function App() {
     }
   }
 
+  function handleParseCsv() {
+    const result = parseCsv(importCsv);
+    const conflicts = [];
+    result.rows.forEach((row, idx) => {
+      if (row.date && row.slot) {
+        const existingConflict = records.some(
+          (r) => r.date === row.date && r.slot === row.slot
+        );
+        const internalConflict = result.rows.some(
+          (r, j) => j !== idx && r.date === row.date && r.slot === row.slot
+        );
+        if (existingConflict || internalConflict) {
+          conflicts.push({ rowIndex: idx, date: row.date, slot: row.slot });
+        }
+      }
+    });
+    setImportResult({ ...result, conflicts });
+  }
+
+  function handleConfirmImport() {
+    if (!importResult || !importResult.rows.length) return;
+    const newRecords = importResult.rows.map((row) => {
+      const record = {
+        id: uid(),
+        client: row.client || '',
+        adName: row.adName || '',
+        date: row.date || '',
+        slot: row.slot || '',
+        plays: row.plays || '',
+        amount: row.amount || '',
+        status: appConfig.primaryStatus,
+        createdAt: new Date().toISOString(),
+        timeline: [{ status: appConfig.primaryStatus, at: today, by: '导入' }],
+      };
+      if (records.some((r) => r.date === record.date && r.slot === record.slot)) {
+        record.conflict = true;
+      }
+      return record;
+    });
+    persist([...newRecords, ...records]);
+    setImportCsv('');
+    setImportResult(null);
+  }
+
+  function handleClearImport() {
+    setImportCsv('');
+    setImportResult(null);
+  }
+
   return (
     <main className="shell" style={{ '--accent': appConfig.accent }}>
       <section className="hero">
@@ -553,6 +640,109 @@ function App() {
             ))}
           </div>
         </section>
+      </section>
+
+      <section className="import-section">
+        <div className="panel import-input-panel">
+          <div className="panel-title">
+            <FileUp size={18} />
+            <h2>数据导入预览</h2>
+          </div>
+          <p className="hint">粘贴CSV格式数据，表头需包含：客户、广告名称、投放日期、时段、播放次数、合同金额</p>
+          <textarea
+            className="import-textarea"
+            rows={6}
+            value={importCsv}
+            onChange={(e) => setImportCsv(e.target.value)}
+            placeholder={'客户,广告名称,投放日期,时段,播放次数,合同金额\n蓝海家居,618促销,2026-06-15,08:00-09:00,4,3600\n北城眼镜,暑期配镜,2026-06-15,18:00-19:00,3,2800'}
+          />
+          <div className="import-actions">
+            <button className="primary" type="button" onClick={handleParseCsv} disabled={!importCsv.trim()}>
+              <CheckCircle2 size={18} />解析数据
+            </button>
+            {importResult && (
+              <button className="cancel-btn" type="button" onClick={handleClearImport}>
+                <X size={18} />清除
+              </button>
+            )}
+          </div>
+        </div>
+
+        {importResult && (
+          <div className="panel import-preview-panel">
+            <div className="panel-title">
+              <ClipboardList size={18} />
+              <h2>识别结果（{importResult.rows.length}条）</h2>
+            </div>
+
+            {importResult.missingHeaders.length > 0 && (
+              <div className="import-alert import-alert-error">
+                <XCircle size={16} />
+                <span>缺少必需列：{importResult.missingHeaders.join('、')}</span>
+              </div>
+            )}
+
+            {importResult.conflicts.length > 0 && (
+              <div className="import-alert import-alert-warn">
+                <AlertTriangle size={16} />
+                <span>发现同日同时段冲突：{importResult.conflicts.map((c) => `${c.date} ${c.slot}`).join('、')}</span>
+              </div>
+            )}
+
+            {importResult.rows.length > 0 && (
+              <div className="import-table-wrap">
+                <table className="import-table">
+                  <thead>
+                    <tr>
+                      <th>行</th>
+                      <th>客户</th>
+                      <th>广告名称</th>
+                      <th>投放日期</th>
+                      <th>时段</th>
+                      <th>播放次数</th>
+                      <th>合同金额</th>
+                      <th>状态</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {importResult.rows.map((row, idx) => {
+                      const isConflict = importResult.conflicts.some((c) => c.rowIndex === idx);
+                      const hasMissing = row._missingFields.length > 0;
+                      return (
+                        <tr key={idx} className={isConflict ? 'row-conflict' : hasMissing ? 'row-missing' : ''}>
+                          <td>{row._rowIndex}</td>
+                          <td>{row.client || '-'}</td>
+                          <td>{row.adName || '-'}</td>
+                          <td>{row.date || '-'}</td>
+                          <td>{row.slot || '-'}</td>
+                          <td>{row.plays || '-'}</td>
+                          <td>{row.amount ? money(Number(row.amount)) : '-'}</td>
+                          <td>
+                            {isConflict && <span className="import-badge badge-conflict">冲突</span>}
+                            {hasMissing && <span className="import-badge badge-missing">缺{row._missingFields.join('/')}</span>}
+                            {!isConflict && !hasMissing && <span className="import-badge badge-ok">正常</span>}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            <div className="import-confirm-actions">
+              <button
+                className="primary"
+                type="button"
+                onClick={handleConfirmImport}
+                disabled={importResult.rows.length === 0}
+              >
+                <FileUp size={18} />确认导入
+              </button>
+              <button className="cancel-btn" type="button" onClick={handleClearImport}>取消</button>
+            </div>
+          </div>
+        )}
       </section>
 
       <section className="archive-section">
