@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Radio, Plus, Search, Trash2, RotateCcw, CheckCircle2, AlertTriangle, ClipboardList, CalendarDays, Users, UserPlus, Phone, Pencil, X, ChevronLeft, ChevronRight, Calendar, FileUp, XCircle, ShieldAlert, Clock, Layers, MinusCircle } from 'lucide-react';
+import { Radio, Plus, Search, Trash2, RotateCcw, CheckCircle2, AlertTriangle, ClipboardList, CalendarDays, Users, UserPlus, Phone, Pencil, X, ChevronLeft, ChevronRight, Calendar, FileUp, XCircle, ShieldAlert, Clock, Layers, MinusCircle, Zap, CalendarRange, SkipForward, Flag } from 'lucide-react';
 import './App.css';
 
 const appConfig = {
@@ -299,6 +299,20 @@ function App() {
   const [weekOffset, setWeekOffset] = useState(0);
   const [importCsv, setImportCsv] = useState('');
   const [importResult, setImportResult] = useState(null);
+
+  const [batchForm, setBatchForm] = useState({
+    client: '',
+    adName: '',
+    startDate: '',
+    endDate: '',
+    weekdays: [1, 2, 3, 4, 5],
+    slots: [],
+    playsPerDay: '4',
+    totalAmount: '',
+    status: '待确认',
+  });
+  const [batchPreview, setBatchPreview] = useState(null);
+  const [batchConflictMode, setBatchConflictMode] = useState('skip');
 
   function persist(next) {
     setRecords(next);
@@ -606,6 +620,170 @@ function App() {
     setImportResult(null);
   }
 
+  function getDatesInRange(startDate, endDate, weekdays) {
+    const dates = [];
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    if (isNaN(start.getTime()) || isNaN(end.getTime()) || start > end) return dates;
+    const current = new Date(start);
+    while (current <= end) {
+      const dayOfWeek = current.getDay();
+      if (weekdays.includes(dayOfWeek)) {
+        dates.push(current.toISOString().slice(0, 10));
+      }
+      current.setDate(current.getDate() + 1);
+    }
+    return dates;
+  }
+
+  function generateBatchPreview() {
+    const { client, adName, startDate, endDate, weekdays, slots, playsPerDay, totalAmount, status } = batchForm;
+
+    if (!client.trim() || !adName.trim() || !startDate || !endDate || slots.length === 0) {
+      alert('请填写客户、广告名称、日期范围并选择至少一个时段');
+      return;
+    }
+
+    const dates = getDatesInRange(startDate, endDate, weekdays);
+    if (dates.length === 0) {
+      alert('所选日期范围内没有符合条件的投放日期');
+      return;
+    }
+
+    const totalRecords = dates.length * slots.length;
+    const perRecordAmount = totalAmount && Number(totalAmount) > 0
+      ? String(Math.round(Number(totalAmount) / totalRecords))
+      : '0';
+    const perRecordPlays = playsPerDay && Number(playsPerDay) > 0
+      ? String(Math.max(1, Math.round(Number(playsPerDay) / slots.length)))
+      : '1';
+
+    const previewRows = [];
+    dates.forEach((date, dateIdx) => {
+      slots.forEach((slot, slotIdx) => {
+        const key = `${date}::${slot}`;
+        const existingRecords = records.filter((r) => r.date === date && r.slot === slot && !r.coPlay);
+        const hasConflict = existingRecords.length > 0;
+        previewRows.push({
+          previewId: `p-${dateIdx}-${slotIdx}`,
+          client,
+          adName,
+          date,
+          slot,
+          plays: perRecordPlays,
+          amount: perRecordAmount,
+          status,
+          hasConflict,
+          conflictWith: existingRecords.map((r) => ({
+            id: r.id,
+            client: r.client,
+            adName: r.adName,
+          })),
+        });
+      });
+    });
+
+    const conflictCount = previewRows.filter((r) => r.hasConflict).length;
+    const normalCount = previewRows.length - conflictCount;
+
+    setBatchPreview({
+      rows: previewRows,
+      totalCount: previewRows.length,
+      normalCount,
+      conflictCount,
+      totalAmount: perRecordAmount === '0' ? 0 : Number(perRecordAmount) * previewRows.length,
+      totalPlays: Number(perRecordPlays) * previewRows.length,
+      dates,
+      slots,
+      perRecordAmount,
+      perRecordPlays,
+    });
+  }
+
+  function clearBatchPreview() {
+    setBatchPreview(null);
+  }
+
+  function confirmBatchCreate() {
+    if (!batchPreview || batchPreview.rows.length === 0) return;
+
+    const rowsToCreate = batchConflictMode === 'skip'
+      ? batchPreview.rows.filter((r) => !r.hasConflict)
+      : batchPreview.rows;
+
+    if (rowsToCreate.length === 0) {
+      alert('没有可创建的记录');
+      return;
+    }
+
+    const newRecords = rowsToCreate.map((row) => ({
+      id: uid(),
+      client: row.client,
+      adName: row.adName,
+      date: row.date,
+      slot: row.slot,
+      plays: row.plays,
+      amount: row.amount,
+      status: row.status || appConfig.primaryStatus,
+      createdAt: new Date().toISOString(),
+      timeline: [{ status: row.status || appConfig.primaryStatus, at: today, by: '批量生成' }],
+      batchFlag: batchConflictMode === 'create' && row.hasConflict ? true : false,
+    }));
+
+    persist([...newRecords, ...records]);
+    setBatchPreview(null);
+    setBatchForm({
+      client: '',
+      adName: '',
+      startDate: '',
+      endDate: '',
+      weekdays: [1, 2, 3, 4, 5],
+      slots: [],
+      playsPerDay: '4',
+      totalAmount: '',
+      status: '待确认',
+    });
+  }
+
+  function toggleWeekday(day) {
+    setBatchForm((prev) => {
+      const exists = prev.weekdays.includes(day);
+      return {
+        ...prev,
+        weekdays: exists
+          ? prev.weekdays.filter((d) => d !== day)
+          : [...prev.weekdays, day].sort(),
+      };
+    });
+  }
+
+  function toggleSlot(slot) {
+    setBatchForm((prev) => {
+      const exists = prev.slots.includes(slot);
+      return {
+        ...prev,
+        slots: exists
+          ? prev.slots.filter((s) => s !== slot)
+          : [...prev.slots, slot],
+      };
+    });
+  }
+
+  function handleBatchClientSelect(event) {
+    const name = event.target.value;
+    if (!name) return;
+    const customer = customers.find((c) => c.name === name);
+    if (customer) {
+      setBatchForm({
+        ...batchForm,
+        client: customer.name,
+        slots: customer.preferredSlot && !batchForm.slots.includes(customer.preferredSlot)
+          ? [...batchForm.slots, customer.preferredSlot]
+          : batchForm.slots,
+      });
+    }
+  }
+
   const [reslotTarget, setReslotTarget] = useState(null);
   const [reslotValue, setReslotValue] = useState('');
 
@@ -731,6 +909,7 @@ function App() {
                 <p className="record-detail">{`播放${item.plays}次｜合同${money(Number(item.amount || 0))}`}</p>
                 {isConflicted.has(item.id) && <div className="warning"><AlertTriangle size={15} />发现冲突</div>}
                 {item.coPlay && <div className="conflict-badge-co"><Layers size={12} />可并播</div>}
+                {item.batchFlag && <div className="batch-flag-badge"><Flag size={12} />批量冲突</div>}
                 <div className="actions" onClick={(event) => event.stopPropagation()}>
                   {appConfig.statuses.map((status) => (
                     <button key={status} type="button" onClick={() => updateStatus(item.id, status)}>{status}</button>
@@ -885,6 +1064,280 @@ function App() {
                 <FileUp size={18} />确认导入
               </button>
               <button className="cancel-btn" type="button" onClick={handleClearImport}>取消</button>
+            </div>
+          </div>
+        )}
+      </section>
+
+      <section className="batch-section">
+        <div className="panel batch-form-panel">
+          <div className="panel-title">
+            <Zap size={18} />
+            <h2>批量排期生成器</h2>
+          </div>
+          <p className="hint">设置广告参数，自动生成日期范围内指定星期、时段的多条排期记录，并预览冲突。</p>
+          <div className="batch-form">
+            <label className="batch-label">
+              <span>客户</span>
+              <div className="client-select-group">
+                <select className="client-select" value="" onChange={handleBatchClientSelect}>
+                  <option value="">从档案选择...</option>
+                  {customers.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}
+                </select>
+                <input
+                  type="text"
+                  value={batchForm.client}
+                  onChange={(e) => setBatchForm({ ...batchForm, client: e.target.value })}
+                  placeholder="蓝海家居"
+                />
+              </div>
+            </label>
+
+            <label className="batch-label">
+              <span>广告名称</span>
+              <input
+                type="text"
+                value={batchForm.adName}
+                onChange={(e) => setBatchForm({ ...batchForm, adName: e.target.value })}
+                placeholder="618门店促销"
+              />
+            </label>
+
+            <div className="batch-date-range">
+              <label className="batch-label">
+                <span>开始日期</span>
+                <input
+                  type="date"
+                  value={batchForm.startDate}
+                  onChange={(e) => setBatchForm({ ...batchForm, startDate: e.target.value })}
+                />
+              </label>
+              <label className="batch-label">
+                <span>结束日期</span>
+                <input
+                  type="date"
+                  value={batchForm.endDate}
+                  onChange={(e) => setBatchForm({ ...batchForm, endDate: e.target.value })}
+                />
+              </label>
+            </div>
+
+            <label className="batch-label">
+              <span>投放星期</span>
+              <div className="weekday-chips">
+                {[
+                  { v: 0, label: '日' },
+                  { v: 1, label: '一' },
+                  { v: 2, label: '二' },
+                  { v: 3, label: '三' },
+                  { v: 4, label: '四' },
+                  { v: 5, label: '五' },
+                  { v: 6, label: '六' },
+                ].map((d) => (
+                  <button
+                    key={d.v}
+                    type="button"
+                    className={`weekday-chip ${batchForm.weekdays.includes(d.v) ? 'active' : ''}`}
+                    onClick={() => toggleWeekday(d.v)}
+                  >
+                    {d.label}
+                  </button>
+                ))}
+              </div>
+            </label>
+
+            <label className="batch-label">
+              <span>投放时段（可多选）</span>
+              <div className="slot-chips">
+                {appConfig.fields.find((f) => f.key === 'slot')?.options.map((slot) => (
+                  <button
+                    key={slot}
+                    type="button"
+                    className={`slot-chip ${batchForm.slots.includes(slot) ? 'active' : ''}`}
+                    onClick={() => toggleSlot(slot)}
+                  >
+                    {slot}
+                  </button>
+                ))}
+              </div>
+            </label>
+
+            <div className="batch-meta-row">
+              <label className="batch-label">
+                <span>每日播放次数</span>
+                <input
+                  type="number"
+                  min="1"
+                  value={batchForm.playsPerDay}
+                  onChange={(e) => setBatchForm({ ...batchForm, playsPerDay: e.target.value })}
+                  placeholder="4"
+                />
+                <span className="batch-sub-hint">将平均分配到各时段</span>
+              </label>
+              <label className="batch-label">
+                <span>合同总额（元）</span>
+                <input
+                  type="number"
+                  min="0"
+                  value={batchForm.totalAmount}
+                  onChange={(e) => setBatchForm({ ...batchForm, totalAmount: e.target.value })}
+                  placeholder="36000"
+                />
+                <span className="batch-sub-hint">将平均分配到每条记录</span>
+              </label>
+            </div>
+
+            <label className="batch-label">
+              <span>初始状态</span>
+              <select
+                value={batchForm.status}
+                onChange={(e) => setBatchForm({ ...batchForm, status: e.target.value })}
+              >
+                {appConfig.statuses.map((status) => <option key={status}>{status}</option>)}
+              </select>
+            </label>
+
+            <div className="batch-actions">
+              <button
+                className="primary"
+                type="button"
+                onClick={generateBatchPreview}
+              >
+                <CalendarRange size={18} />生成预览
+              </button>
+              {batchPreview && (
+                <button className="cancel-btn" type="button" onClick={clearBatchPreview}>
+                  <X size={18} />清除预览
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {batchPreview && (
+          <div className="panel batch-preview-panel">
+            <div className="panel-title">
+              <ClipboardList size={18} />
+              <h2>排期预览（共{batchPreview.totalCount}条）</h2>
+              {batchPreview.conflictCount > 0 && (
+                <span className="batch-conflict-badge">
+                  <AlertTriangle size={12} />{batchPreview.conflictCount}条冲突
+                </span>
+              )}
+            </div>
+
+            <div className="batch-summary">
+              <div className="batch-summary-item">
+                <span className="bs-label">投放日期</span>
+                <span className="bs-value">{batchPreview.dates.length}天</span>
+              </div>
+              <div className="batch-summary-item">
+                <span className="bs-label">投放时段</span>
+                <span className="bs-value">{batchPreview.slots.length}个</span>
+              </div>
+              <div className="batch-summary-item">
+                <span className="bs-label">每条播放</span>
+                <span className="bs-value">{batchPreview.perRecordPlays}次</span>
+              </div>
+              <div className="batch-summary-item">
+                <span className="bs-label">每条金额</span>
+                <span className="bs-value amount">{money(Number(batchPreview.perRecordAmount))}</span>
+              </div>
+              <div className="batch-summary-item">
+                <span className="bs-label">总播放</span>
+                <span className="bs-value">{batchPreview.totalPlays}次</span>
+              </div>
+              <div className="batch-summary-item">
+                <span className="bs-label">总合同额</span>
+                <span className="bs-value amount">{money(batchPreview.totalAmount)}</span>
+              </div>
+            </div>
+
+            {batchPreview.conflictCount > 0 && (
+              <div className="batch-conflict-options">
+                <div className="batch-conflict-title">
+                  <AlertTriangle size={16} />
+                  <span>发现{batchPreview.conflictCount}条同日同时段冲突，请选择处理方式：</span>
+                </div>
+                <div className="conflict-mode-options">
+                  <label className={`conflict-mode-option ${batchConflictMode === 'skip' ? 'active' : ''}`}>
+                    <input
+                      type="radio"
+                      checked={batchConflictMode === 'skip'}
+                      onChange={() => setBatchConflictMode('skip')}
+                    />
+                    <SkipForward size={14} />
+                    <div>
+                      <strong>跳过冲突</strong>
+                      <span>仅创建无冲突的{batchPreview.normalCount}条记录</span>
+                    </div>
+                  </label>
+                  <label className={`conflict-mode-option ${batchConflictMode === 'create' ? 'active' : ''}`}>
+                    <input
+                      type="radio"
+                      checked={batchConflictMode === 'create'}
+                      onChange={() => setBatchConflictMode('create')}
+                    />
+                    <Flag size={14} />
+                    <div>
+                      <strong>照常创建</strong>
+                      <span>创建全部{batchPreview.totalCount}条，冲突的{batchPreview.conflictCount}条将标记为需处理</span>
+                    </div>
+                  </label>
+                </div>
+              </div>
+            )}
+
+            <div className="batch-preview-table-wrap">
+              <table className="batch-preview-table">
+                <thead>
+                  <tr>
+                    <th>序号</th>
+                    <th>投放日期</th>
+                    <th>星期</th>
+                    <th>时段</th>
+                    <th>播放</th>
+                    <th>合同金额</th>
+                    <th>状态</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {batchPreview.rows.map((row, idx) => {
+                    const dayOfWeek = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][new Date(row.date).getDay()];
+                    return (
+                      <tr key={row.previewId} className={row.hasConflict ? 'row-conflict' : ''}>
+                        <td>{idx + 1}</td>
+                        <td>{row.date}</td>
+                        <td>{dayOfWeek}</td>
+                        <td>{row.slot}</td>
+                        <td>{row.plays}次</td>
+                        <td>{money(Number(row.amount))}</td>
+                        <td>
+                          {row.hasConflict ? (
+                            <span className="import-badge badge-conflict" title={row.conflictWith.map(c => `${c.client}-${c.adName}`).join('、')}>
+                              冲突：{row.conflictWith.map(c => c.client).join('、')}
+                            </span>
+                          ) : (
+                            <span className="import-badge badge-ok">正常</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="import-confirm-actions">
+              <button
+                className="primary"
+                type="button"
+                onClick={confirmBatchCreate}
+              >
+                <Plus size={18} />
+                确认创建（{batchConflictMode === 'skip' ? batchPreview.normalCount : batchPreview.totalCount}条）
+              </button>
+              <button className="cancel-btn" type="button" onClick={clearBatchPreview}>取消</button>
             </div>
           </div>
         )}
@@ -1192,6 +1645,7 @@ function App() {
               <p><span className={'status ' + statusClass(selected.status)}>{selected.status}</span></p>
               {isConflicted.has(selected.id) && <div className="warning"><AlertTriangle size={15} />时段冲突</div>}
               {selected.coPlay && <div className="conflict-badge-co"><Layers size={12} />已标记可并播</div>}
+              {selected.batchFlag && <div className="batch-flag-badge"><Flag size={12} />批量生成（含冲突）</div>}
 
               {isConflicted.has(selected.id) && (
                 <div className="detail-conflict-actions">
