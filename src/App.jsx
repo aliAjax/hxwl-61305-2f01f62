@@ -167,6 +167,96 @@ const appConfig = {
   }
 };
 
+const channels = [
+  {
+    id: 'channel-news',
+    name: '新闻台',
+    color: '#2563eb',
+    isDefault: true,
+    slots: [
+      '07:00-08:00',
+      '08:00-09:00',
+      '12:00-13:00',
+      '18:00-19:00',
+      '21:00-22:00'
+    ]
+  },
+  {
+    id: 'channel-music',
+    name: '音乐台',
+    color: '#8b5cf6',
+    isDefault: false,
+    slots: [
+      '07:00-08:00',
+      '08:00-09:00',
+      '12:00-13:00',
+      '18:00-19:00',
+      '21:00-22:00'
+    ]
+  },
+  {
+    id: 'channel-traffic',
+    name: '交通台',
+    color: '#f97316',
+    isDefault: false,
+    slots: [
+      '07:00-08:00',
+      '08:00-09:00',
+      '12:00-13:00',
+      '18:00-19:00',
+      '21:00-22:00'
+    ]
+  }
+];
+
+const inventoryStorage = 'hxwl-61305-channel-inventory';
+
+const defaultInventory = {
+  'channel-news': {
+    slots: [
+      { slot: '07:00-08:00', capacity: 3, enabled: true },
+      { slot: '08:00-09:00', capacity: 3, enabled: true },
+      { slot: '12:00-13:00', capacity: 3, enabled: true },
+      { slot: '18:00-19:00', capacity: 3, enabled: true },
+      { slot: '21:00-22:00', capacity: 3, enabled: true }
+    ]
+  },
+  'channel-music': {
+    slots: [
+      { slot: '07:00-08:00', capacity: 3, enabled: true },
+      { slot: '08:00-09:00', capacity: 3, enabled: true },
+      { slot: '12:00-13:00', capacity: 3, enabled: true },
+      { slot: '18:00-19:00', capacity: 3, enabled: true },
+      { slot: '21:00-22:00', capacity: 3, enabled: true }
+    ]
+  },
+  'channel-traffic': {
+    slots: [
+      { slot: '07:00-08:00', capacity: 3, enabled: true },
+      { slot: '08:00-09:00', capacity: 3, enabled: true },
+      { slot: '12:00-13:00', capacity: 3, enabled: true },
+      { slot: '18:00-19:00', capacity: 3, enabled: true },
+      { slot: '21:00-22:00', capacity: 3, enabled: true }
+    ]
+  }
+};
+
+function loadInventory() {
+  const raw = localStorage.getItem(inventoryStorage);
+  if (raw) {
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return defaultInventory;
+    }
+  }
+  return defaultInventory;
+}
+
+function persistInventory(next) {
+  localStorage.setItem(inventoryStorage, JSON.stringify(next));
+}
+
 const customerStorage = 'hxwl-61305-customer-archive';
 
 const defaultCustomers = [
@@ -219,12 +309,18 @@ function loadRecords() {
   const raw = localStorage.getItem(appConfig.storage);
   if (raw) {
     try {
-      return JSON.parse(raw);
+      const data = JSON.parse(raw);
+      if (data.length > 0 && !data[0].channelId) {
+        const migrated = data.map((item) => ({ ...item, channelId: 'channel-news' }));
+        localStorage.setItem(appConfig.storage, JSON.stringify(migrated));
+        return migrated;
+      }
+      return data;
     } catch {
-      return withIds(appConfig.seed);
+      return withIds(appConfig.seed).map((item) => ({ ...item, channelId: 'channel-news' }));
     }
   }
-  return withIds(appConfig.seed);
+  return withIds(appConfig.seed).map((item) => ({ ...item, channelId: 'channel-news' }));
 }
 
 function loadCustomers() {
@@ -317,10 +413,32 @@ function statusClass(status) {
   return ['status-a', 'status-b', 'status-c', 'status-d'][index] || 'status-a';
 }
 
+function getChannelById(channelId) {
+  return channels.find((c) => c.id === channelId);
+}
+
+function getChannelColor(channelId) {
+  const channel = getChannelById(channelId);
+  return channel?.color || channels.find((c) => c.isDefault)?.color || '#2563eb';
+}
+
+function getChannelSlots(channelId) {
+  const channel = getChannelById(channelId);
+  return channel?.slots || channels.find((c) => c.isDefault)?.slots || [];
+}
+
+function getChannelInventory(channelId, inventory) {
+  return inventory?.[channelId] || defaultInventory[channelId];
+}
+
 function App() {
   const [records, setRecords] = useState(loadRecords);
-  const [form, setForm] = useState(appConfig.defaultValues);
-  const [filters, setFilters] = useState({ query: '', status: '全部' });
+  const [selectedChannel, setSelectedChannel] = useState('channel-news');
+  const [inventory, setInventory] = useState(loadInventory);
+  const [inventoryModalOpen, setInventoryModalOpen] = useState(false);
+  const [inventoryEditChannel, setInventoryEditChannel] = useState(null);
+  const [form, setForm] = useState({ ...appConfig.defaultValues, channelId: 'channel-news' });
+  const [filters, setFilters] = useState({ query: '', status: '全部', channel: '全部' });
   const [selected, setSelected] = useState(null);
   const [customers, setCustomers] = useState(loadCustomers);
   const [customerForm, setCustomerForm] = useState({ name: '', contact: '', phone: '', preferredSlot: '', historicalAmount: '' });
@@ -333,6 +451,7 @@ function App() {
   const [batchForm, setBatchForm] = useState({
     client: '',
     adName: '',
+    channelId: 'channel-news',
     startDate: '',
     endDate: '',
     weekdays: [1, 2, 3, 4, 5],
@@ -383,6 +502,55 @@ function App() {
   function persistMaterials(next) {
     setMaterials(next);
     localStorage.setItem(materialStorage, JSON.stringify(next));
+  }
+
+  function handlePersistInventory(next) {
+    setInventory(next);
+    persistInventory(next);
+  }
+
+  function openInventoryModal(channelId) {
+    setInventoryEditChannel(channelId);
+    setInventoryModalOpen(true);
+  }
+
+  function closeInventoryModal() {
+    setInventoryModalOpen(false);
+    setInventoryEditChannel(null);
+  }
+
+  function updateSlotCapacity(channelId, slotIndex, field, value) {
+    const next = { ...inventory };
+    if (!next[channelId]) {
+      next[channelId] = { slots: [...defaultInventory[channelId].slots] };
+    }
+    next[channelId].slots = next[channelId].slots.map((slot, idx) => {
+      if (idx === slotIndex) {
+        return { ...slot, [field]: field === 'capacity' ? Number(value) : value };
+      }
+      return slot;
+    });
+    handlePersistInventory(next);
+  }
+
+  function addSlot(channelId) {
+    const next = { ...inventory };
+    if (!next[channelId]) {
+      next[channelId] = { slots: [...defaultInventory[channelId].slots] };
+    }
+    next[channelId].slots = [...next[channelId].slots, { slot: '00:00-01:00', capacity: 3, enabled: true }];
+    handlePersistInventory(next);
+  }
+
+  function removeSlot(channelId, slotIndex) {
+    const next = { ...inventory };
+    if (!next[channelId]) return;
+    next[channelId].slots = next[channelId].slots.filter((_, idx) => idx !== slotIndex);
+    handlePersistInventory(next);
+  }
+
+  function getSlotUsage(channelId, slotName, recordsList) {
+    return recordsList.filter((r) => r.channelId === channelId && r.slot === slotName && !r.coPlay).length;
   }
 
   function getMaterialByScheduleId(scheduleId) {
@@ -685,6 +853,7 @@ function App() {
     const nextRecord = {
       id: uid(),
       ...form,
+      channelId: form.channelId || selectedChannel,
       status: form.status || appConfig.primaryStatus,
       createdAt: new Date().toISOString(),
       timeline: [{ status: form.status || appConfig.primaryStatus, at: today, by: '录入' }]
@@ -697,7 +866,7 @@ function App() {
     }
 
     persist([nextRecord, ...records]);
-    setForm(appConfig.defaultValues);
+    setForm({ ...appConfig.defaultValues, channelId: selectedChannel });
     setSelected(nextRecord);
   }
 
@@ -738,6 +907,7 @@ function App() {
 
   const filteredRecords = useMemo(() => {
     return records
+      .filter((item) => filters.channel === '全部' || item.channelId === filters.channel)
       .filter((item) => !filters.query || `${item.client}${item.adName}`.includes(filters.query))
       .filter((item) => filters.status === '全部' || item.status === filters.status)
       .filter((item) => !selectedDate || item.date === selectedDate)
@@ -762,7 +932,7 @@ function App() {
 
   const groupedByDateSlot = useMemo(() => {
     const result = {};
-    records.forEach((item) => {
+    filteredRecords.forEach((item) => {
       const dateKey = item.date || '未排期';
       const slotKey = item.slot || '未排期';
       if (!result[dateKey]) result[dateKey] = {};
@@ -770,7 +940,7 @@ function App() {
       result[dateKey][slotKey].push(item);
     });
     return result;
-  }, [records]);
+  }, [filteredRecords]);
 
   const directory = useMemo(() => {
     return records.reduce((acc, item) => {
@@ -814,7 +984,8 @@ function App() {
 
   const dailyStats = useMemo(() => {
     const stats = {};
-    records.forEach((item) => {
+    const sourceRecords = filters.channel === '全部' ? records : records.filter((r) => r.channelId === filters.channel);
+    sourceRecords.forEach((item) => {
       const d = item.date;
       if (!stats[d]) {
         stats[d] = { count: 0, plays: 0, amount: 0 };
@@ -824,25 +995,29 @@ function App() {
       stats[d].amount += Number(item.amount || 0);
     });
     return stats;
-  }, [records]);
+  }, [records, filters.channel]);
 
   const conflictGroups = useMemo(() => {
     const slotMap = {};
     records.forEach((item) => {
-      if (!item.date || !item.slot) return;
-      const key = `${item.date}::${item.slot}`;
+      if (!item.date || !item.slot || !item.channelId) return;
+      const key = `${item.channelId}::${item.date}::${item.slot}`;
       (slotMap[key] ||= []).push(item);
     });
     const groups = [];
     Object.entries(slotMap).forEach(([key, items]) => {
       const nonCoPlay = items.filter((r) => !r.coPlay);
       if (nonCoPlay.length > 1) {
-        const [date, slot] = key.split('::');
+        const [channelId, date, slot] = key.split('::');
         const totalPlays = nonCoPlay.reduce((sum, r) => sum + Number(r.plays || 0), 0);
         const totalAmount = nonCoPlay.reduce((sum, r) => sum + Number(r.amount || 0), 0);
         const clients = [...new Set(nonCoPlay.map((r) => r.client))];
+        const channel = getChannelById(channelId);
         groups.push({
           key,
+          channelId,
+          channelName: channel?.name || '未知频道',
+          channelColor: channel?.color || '#666',
           date,
           slot,
           items: nonCoPlay,
@@ -853,7 +1028,7 @@ function App() {
         });
       }
     });
-    groups.sort((a, b) => a.date.localeCompare(b.date) || a.slot.localeCompare(b.slot));
+    groups.sort((a, b) => a.channelId.localeCompare(b.channelId) || a.date.localeCompare(b.date) || a.slot.localeCompare(b.slot));
     return groups;
   }, [records]);
 
@@ -889,7 +1064,14 @@ function App() {
   }, [filteredRecords, isConflicted]);
 
   const slotUtilizationStats = useMemo(() => {
-    const slotOptions = appConfig.fields.find((f) => f.key === 'slot')?.options || [];
+    let slotOptions;
+    if (filters.channel === '全部' || filters.channel === '全部频道') {
+      const allSlots = new Set();
+      channels.forEach((ch) => ch.slots.forEach((s) => allSlots.add(s)));
+      slotOptions = Array.from(allSlots);
+    } else {
+      slotOptions = getChannelSlots(filters.channel);
+    }
     const map = {};
     slotOptions.forEach((slot) => {
       map[slot] = { slot, recordCount: 0, plays: 0, amount: 0, clients: new Set(), conflictCount: 0 };
@@ -918,7 +1100,7 @@ function App() {
         utilization: totalRecords > 0 ? (s.recordCount / totalRecords) * 100 : 0,
       };
     });
-  }, [filteredRecords, isConflicted]);
+  }, [filteredRecords, isConflicted, filters.channel]);
 
   const last7DaysRevenue = useMemo(() => {
     const baseDate = parseDateKey(today);
@@ -991,11 +1173,15 @@ function App() {
     ];
   }, [records, materials]);
 
+  const channelRecords = useMemo(() => {
+    return filters.channel === '全部' ? records : records.filter((r) => r.channelId === filters.channel);
+  }, [records, filters.channel]);
+
   const metrics = [
-    { label: "排期数", value: records.length },
-    { label: "今日广告", value: records.filter((item) => item.date === today).length },
-    { label: "冲突", value: conflictGroups.length },
-    { label: "合同额", value: money(records.reduce((sum, item) => sum + Number(item.amount || 0), 0)) },
+    { label: "排期数", value: channelRecords.length },
+    { label: "今日广告", value: channelRecords.filter((item) => item.date === today).length },
+    { label: "冲突", value: filters.channel === '全部' ? conflictGroups.length : conflictGroups.filter((g) => g.channelId === filters.channel).length },
+    { label: "合同额", value: money(channelRecords.reduce((sum, item) => sum + Number(item.amount || 0), 0)) },
   ];
 
   function toggleDateFilter(date) {
@@ -1009,10 +1195,11 @@ function App() {
   function handleParseCsv() {
     const result = parseCsv(importCsv);
     const conflicts = [];
+    const importChannelId = filters.channel === '全部' ? 'channel-news' : filters.channel;
     result.rows.forEach((row, idx) => {
       if (row.date && row.slot) {
         const existingConflict = records.some(
-          (r) => r.date === row.date && r.slot === row.slot
+          (r) => r.channelId === importChannelId && r.date === row.date && r.slot === row.slot && !r.coPlay
         );
         const internalConflict = result.rows.some(
           (r, j) => j !== idx && r.date === row.date && r.slot === row.slot
@@ -1027,10 +1214,12 @@ function App() {
 
   function handleConfirmImport() {
     if (!importResult || !importResult.rows.length) return;
+    const importChannelId = filters.channel === '全部' ? 'channel-news' : filters.channel;
     const newRecords = importResult.rows.map((row) => ({
       id: uid(),
       client: row.client || '',
       adName: row.adName || '',
+      channelId: importChannelId,
       date: row.date || '',
       slot: row.slot || '',
       plays: row.plays || '',
@@ -1074,7 +1263,7 @@ function App() {
   }
 
   function generateBatchPreview() {
-    const { client, adName, startDate, endDate, weekdays, slots, playsPerDay, totalAmount, status } = batchForm;
+    const { client, adName, channelId, startDate, endDate, weekdays, slots, playsPerDay, totalAmount, status } = batchForm;
 
     if (!client.trim() || !adName.trim() || !startDate || !endDate || slots.length === 0) {
       alert('请填写客户、广告名称、日期范围并选择至少一个时段');
@@ -1097,13 +1286,14 @@ function App() {
     let rowIndex = 0;
     dates.forEach((date, dateIdx) => {
       slots.forEach((slot, slotIdx) => {
-        const key = `${date}::${slot}`;
-        const existingRecords = records.filter((r) => r.date === date && r.slot === slot && !r.coPlay);
+        const key = `${channelId}::${date}::${slot}`;
+        const existingRecords = records.filter((r) => r.channelId === channelId && r.date === date && r.slot === slot && !r.coPlay);
         const hasConflict = existingRecords.length > 0;
         previewRows.push({
           previewId: `p-${dateIdx}-${slotIdx}`,
           client,
           adName,
+          channelId,
           date,
           slot,
           plays: perRecordPlays,
@@ -1160,6 +1350,7 @@ function App() {
       id: uid(),
       client: row.client,
       adName: row.adName,
+      channelId: row.channelId || batchForm.channelId,
       date: row.date,
       slot: row.slot,
       plays: row.plays,
@@ -1175,6 +1366,7 @@ function App() {
     setBatchForm({
       client: '',
       adName: '',
+      channelId: batchForm.channelId,
       startDate: '',
       endDate: '',
       weekdays: [1, 2, 3, 4, 5],
@@ -1243,7 +1435,7 @@ function App() {
 
   function resolveByCoPlay(groupKey) {
     const next = records.map((item) => {
-      const key = `${item.date}::${item.slot}`;
+      const key = `${item.channelId}::${item.date}::${item.slot}`;
       if (key === groupKey) return { ...item, coPlay: true };
       return item;
     });
@@ -1275,6 +1467,28 @@ function App() {
         </div>
       </section>
 
+      <section className="channel-tabs">
+        <button
+          type="button"
+          className={`channel-tab ${filters.channel === '全部' ? 'active' : ''}`}
+          onClick={() => setFilters({ ...filters, channel: '全部' })}
+        >
+          <span className="channel-dot" style={{ background: 'linear-gradient(90deg, #2563eb, #8b5cf6, #f97316)' }} />
+          <span>全部频道</span>
+        </button>
+        {channels.map((channel) => (
+          <button
+            key={channel.id}
+            type="button"
+            className={`channel-tab ${filters.channel === channel.id ? 'active' : ''}`}
+            onClick={() => setFilters({ ...filters, channel: channel.id })}
+          >
+            <span className="channel-dot" style={{ background: channel.color }} />
+            <span>{channel.name}</span>
+          </button>
+        ))}
+      </section>
+
       <section className="metrics">
         {metrics.map((metric) => (
           <article className="metric" key={metric.label}>
@@ -1284,6 +1498,62 @@ function App() {
         ))}
       </section>
 
+      <section className="inventory-section">
+        <div className="panel">
+          <div className="panel-title">
+            <Layers size={18} />
+            <h2>多频道排期库存</h2>
+            <span className="broadcast-hint">各频道可售时段、容量和占用情况</span>
+          </div>
+          <div className="inventory-grid">
+            {channels.map((channel) => {
+              const channelInv = getChannelInventory(channel.id, inventory);
+              const channelRecs = records.filter((r) => r.channelId === channel.id);
+              return (
+                <div key={channel.id} className="inventory-card" style={{ borderTopColor: channel.color }}>
+                  <div className="inventory-card-header">
+                    <div>
+                      <span className="channel-dot" style={{ background: channel.color }} />
+                      <strong>{channel.name}</strong>
+                    </div>
+                    <button type="button" className="primary compact" onClick={() => openInventoryModal(channel.id)}>
+                      <Pencil size={14} />配置
+                    </button>
+                  </div>
+                  <div className="inventory-slot-list">
+                    {channelInv.slots.filter((s) => s.enabled).map((slotConfig, idx) => {
+                      const usage = getSlotUsage(channel.id, slotConfig.slot, channelRecs);
+                      const percent = slotConfig.capacity > 0 ? Math.min(100, (usage / slotConfig.capacity) * 100) : 0;
+                      const isFull = usage >= slotConfig.capacity;
+                      const isHigh = percent >= 70 && !isFull;
+                      return (
+                        <div key={idx} className="inventory-slot-item">
+                          <div className="inventory-slot-header">
+                            <span className="slot-name">{slotConfig.slot}</span>
+                            <span className={`capacity-badge ${isFull ? 'full' : isHigh ? 'high' : ''}`}>
+                              {usage}/{slotConfig.capacity}
+                            </span>
+                          </div>
+                          <div className="inventory-progress">
+                            <div
+                              className="inventory-progress-fill"
+                              style={{
+                                width: `${percent}%`,
+                                background: isFull ? '#dc2626' : isHigh ? '#f59e0b' : channel.color
+                              }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
       <section className="workspace">
         <form className="panel form-panel" onSubmit={addRecord}>
           <div className="panel-title">
@@ -1291,6 +1561,18 @@ function App() {
             <h2>新增记录</h2>
           </div>
           <div className="form-grid">
+            <label>
+              <span>投放频道</span>
+              <select value={form.channelId || selectedChannel} onChange={(event) => {
+                const newChannelId = event.target.value;
+                const channelSlots = getChannelSlots(newChannelId);
+                setForm({ ...form, channelId: newChannelId, slot: channelSlots[0] || form.slot });
+              }}>
+                {channels.map((channel) => (
+                  <option key={channel.id} value={channel.id}>{channel.name}</option>
+                ))}
+              </select>
+            </label>
             {appConfig.fields.map((field) => (
               <label key={field.key} className={field.type === 'textarea' ? 'wide' : ''}>
                 <span>{field.label}</span>
@@ -1304,6 +1586,10 @@ function App() {
                   </div>
                 ) : field.type === 'textarea' ? (
                   <textarea value={form[field.key] || ''} onChange={(event) => setForm({ ...form, [field.key]: event.target.value })} placeholder={field.placeholder} />
+                ) : field.key === 'slot' ? (
+                  <select value={form[field.key] || ''} onChange={(event) => setForm({ ...form, [field.key]: event.target.value })}>
+                    {getChannelSlots(form.channelId || selectedChannel).map((option) => <option key={option}>{option}</option>)}
+                  </select>
                 ) : field.type === 'select' ? (
                   <select value={form[field.key] || ''} onChange={(event) => setForm({ ...form, [field.key]: event.target.value })}>
                     {field.options.map((option) => <option key={option}>{option}</option>)}
@@ -1330,8 +1616,12 @@ function App() {
               <Search size={16} />
               <input value={filters.query} onChange={(event) => setFilters({ ...filters, query: event.target.value })} placeholder={appConfig.filters[0]?.label || '搜索'} />
             </div>
+            <select value={filters.channel} onChange={(event) => setFilters({ ...filters, channel: event.target.value })}>
+              <option>全部频道</option>
+              {channels.map((channel) => <option key={channel.id} value={channel.id}>{channel.name}</option>)}
+            </select>
             <select value={filters.status} onChange={(event) => setFilters({ ...filters, status: event.target.value })}>
-              <option>全部</option>
+              <option>全部状态</option>
               {appConfig.statuses.map((status) => <option key={status}>{status}</option>)}
             </select>
           </div>
@@ -1347,7 +1637,14 @@ function App() {
                     <h3>{item.adName}</h3>
                     <p>{`${item.client} · ${item.date} · ${item.slot}`}</p>
                   </div>
-                  <span className={'status ' + statusClass(item.status)}>{item.status}</span>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
+                    <span className={'status ' + statusClass(item.status)}>{item.status}</span>
+                    {item.channelId && (
+                      <span className={`channel-badge channel-badge-${item.channelId.replace('channel-', '')}`}>
+                        {getChannelById(item.channelId)?.name || '未知'}
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <p className="record-detail">{`播放${item.plays}次｜合同${money(Number(item.amount || 0))}`}</p>
                 {isConflicted.has(item.id) && <div className="warning"><AlertTriangle size={15} />发现冲突</div>}
@@ -1529,6 +1826,22 @@ function App() {
           <p className="hint">设置广告参数，自动生成日期范围内指定星期、时段的多条排期记录，并预览冲突。</p>
           <div className="batch-form">
             <label className="batch-label">
+              <span>投放频道</span>
+              <select
+                value={batchForm.channelId}
+                onChange={(e) => {
+                  const newChannelId = e.target.value;
+                  const channelSlots = getChannelSlots(newChannelId);
+                  setBatchForm({ ...batchForm, channelId: newChannelId, slots: [] });
+                }}
+              >
+                {channels.map((channel) => (
+                  <option key={channel.id} value={channel.id}>{channel.name}</option>
+                ))}
+              </select>
+            </label>
+
+            <label className="batch-label">
               <span>客户</span>
               <div className="client-select-group">
                 <select className="client-select" value="" onChange={handleBatchClientSelect}>
@@ -1600,7 +1913,7 @@ function App() {
             <label className="batch-label">
               <span>投放时段（可多选）</span>
               <div className="slot-chips">
-                {appConfig.fields.find((f) => f.key === 'slot')?.options.map((slot) => (
+                {getChannelSlots(batchForm.channelId).map((slot) => (
                   <button
                     key={slot}
                     type="button"
@@ -1816,6 +2129,9 @@ function App() {
                   <div className="conflict-group-head">
                     <div className="conflict-group-label">
                       <AlertTriangle size={16} />
+                      <span className={`channel-badge channel-badge-${group.channelId.replace('channel-', '')}`}>
+                        {group.channelName}
+                      </span>
                       <strong>{group.date}</strong>
                       <span className="conflict-slot-tag">{group.slot}</span>
                       <span className="conflict-count">{group.conflictCount}条冲突</span>
@@ -2649,7 +2965,17 @@ function App() {
                                 className={`slot-ad-item ${isConflicted.has(item.id) ? 'ad-conflict' : ''} ${item.coPlay ? 'ad-coplay' : ''}`}
                                 onClick={() => setSelected(item)}
                               >
-                                <span className="ad-name">{item.adName}</span>
+                                <div className="ad-item-header">
+                                  <span className="ad-name">{item.adName}</span>
+                                  {item.channelId && (
+                                    <span
+                                      className="channel-badge channel-news"
+                                      style={{ backgroundColor: `${getChannelColor(item.channelId)}20`, color: getChannelColor(item.channelId) }}
+                                    >
+                                      {getChannelById(item.channelId)?.name}
+                                    </span>
+                                  )}
+                                </div>
                                 <span className="ad-client">{item.client}</span>
                               </div>
                             ))}
@@ -2673,6 +2999,13 @@ function App() {
             <div className="detail">
               <h3>{selected.adName}</h3>
               <p>{`${selected.client} · ${selected.date} · ${selected.slot}`}</p>
+              {selected.channelId && (
+                <p style={{ margin: '4px 0' }}>
+                  <span className={`channel-badge channel-badge-${selected.channelId.replace('channel-', '')}`}>
+                    {getChannelById(selected.channelId)?.name || '未知频道'}
+                  </span>
+                </p>
+              )}
               <p>{`播放${selected.plays}次｜合同${money(Number(selected.amount || 0))}`}</p>
               <p><span className={'status ' + statusClass(selected.status)}>{selected.status}</span></p>
               {isConflicted.has(selected.id) && <div className="warning"><AlertTriangle size={15} />时段冲突</div>}
@@ -3053,6 +3386,81 @@ function App() {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {inventoryModalOpen && inventoryEditChannel && (
+        <div className="modal-overlay" onClick={closeInventoryModal}>
+          <div className="modal-content inventory-edit-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="panel-title" style={{ marginBottom: 0 }}>
+                <Layers size={18} />
+                <h2>配置频道库存 - {getChannelById(inventoryEditChannel)?.name}</h2>
+              </div>
+              <button type="button" className="modal-close" onClick={closeInventoryModal}>
+                <X size={20} />
+              </button>
+            </div>
+            <div className="modal-body">
+              <p className="hint">配置该频道的可售时段和容量。设置容量为0可禁用该时段。</p>
+              <div className="inventory-form-grid">
+                <div className="slot-editor-list">
+                  {getChannelInventory(inventoryEditChannel, inventory).slots.map((slotConfig, idx) => (
+                    <div key={idx} className="slot-editor-row">
+                      <label>
+                        <span>时段</span>
+                        <input
+                          type="text"
+                          value={slotConfig.slot}
+                          onChange={(e) => updateSlotCapacity(inventoryEditChannel, idx, 'slot', e.target.value)}
+                          placeholder="08:00-09:00"
+                        />
+                      </label>
+                      <label>
+                        <span>容量</span>
+                        <input
+                          type="number"
+                          min="0"
+                          value={slotConfig.capacity}
+                          onChange={(e) => updateSlotCapacity(inventoryEditChannel, idx, 'capacity', e.target.value)}
+                        />
+                      </label>
+                      <label>
+                        <span>启用</span>
+                        <select
+                          value={slotConfig.enabled ? 'true' : 'false'}
+                          onChange={(e) => updateSlotCapacity(inventoryEditChannel, idx, 'enabled', e.target.value === 'true')}
+                        >
+                          <option value="true">是</option>
+                          <option value="false">否</option>
+                        </select>
+                      </label>
+                      <button
+                        type="button"
+                        className="ghost-danger compact"
+                        onClick={() => removeSlot(inventoryEditChannel, idx)}
+                        style={{ alignSelf: 'flex-end' }}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  className="add-slot-btn"
+                  onClick={() => addSlot(inventoryEditChannel)}
+                >
+                  <Plus size={16} /> 添加时段
+                </button>
+              </div>
+              <div className="modal-actions">
+                <button type="button" className="primary" onClick={closeInventoryModal}>
+                  <CheckCircle2 size={16} />完成
+                </button>
+              </div>
             </div>
           </div>
         </div>

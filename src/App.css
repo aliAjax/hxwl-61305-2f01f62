@@ -1029,9 +1029,6 @@ textarea { min-height: 76px; resize: vertical; }
 }
 
 .slot-ad-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
   padding: 6px 10px;
   background: #f9fafb;
   border-radius: 4px;
@@ -1052,6 +1049,21 @@ textarea { min-height: 76px; resize: vertical; }
 .slot-ad-item.ad-coplay {
   background: #ecfeff;
   border-left: 3px solid #0891b2;
+}
+
+.ad-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 2px;
+}
+
+.ad-item-header .ad-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .ad-name {
@@ -2762,5 +2774,408 @@ textarea { min-height: 76px; resize: vertical; }
 
   .filter-checkbox {
     width: 100%;
+  }
+}
+
+.channel-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  border-bottom: 1px solid #e5e7eb;
+  padding-bottom: 12px;
+}
+
+.channel-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+  cursor: pointer;
+  transition: all .15s ease;
+}
+
+.channel-tab:hover {
+  background: #f3f4f6;
+  border-color: #d1d5db;
+}
+
+.channel-tab.active {
+  background: #fff;
+  border-color: var(--accent);
+  color: var(--accent);
+  box-shadow: 0 2px 8px rgba(249, 115, 22, 0.1);
+}
+
+.channel-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.channel-dot.news { background: #2563eb; }
+.channel-dot.music { background: #8b5cf6; }
+.channel-dot.traffic { background: #f97316; }
+
+.inventory-section {
+  margin-top: 18px;
+}
+
+.inventory-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.inventory-card {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  overflow: hidden;
+  transition: border-color .16s, box-shadow .16s;
+}
+
+.inventory-card:hover {
+  box-shadow: 0 8px 28px rgba(15, 23, 42, .06);
+}
+
+.inventory-card.channel-news { border-top: 3px solid #2563eb; }
+.inventory-card.channel-music { border-top: 3px solid #8b5cf6; }
+.inventory-card.channel-traffic { border-top: 3px solid #f97316; }
+
+.inventory-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  background: #fafafa;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.inventory-card-header h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  color: #111827;
+  font-weight: 700;
+}
+
+.inventory-card-header .inventory-edit-btn {
+  background: none;
+  border: 1px solid #d0d5dd;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #374151;
+  cursor: pointer;
+  transition: all .15s;
+}
+
+.inventory-card-header .inventory-edit-btn:hover {
+  background: #f3f4f6;
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.inventory-slot-list {
+  padding: 8px;
+  display: grid;
+  gap: 6px;
+}
+
+.inventory-slot-item {
+  padding: 10px 12px;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  transition: all .15s;
+}
+
+.inventory-slot-item:hover {
+  background: #f3f4f6;
+  border-color: #d1d5db;
+}
+
+.inventory-slot-item.full {
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+
+.inventory-slot-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.inventory-slot-header .slot-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+}
+
+.inventory-progress {
+  height: 8px;
+  background: #e5e7eb;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.inventory-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width .3s ease;
+}
+
+.inventory-progress-fill.news { background: linear-gradient(90deg, #2563eb, #1d4ed8); }
+.inventory-progress-fill.music { background: linear-gradient(90deg, #8b5cf6, #7c3aed); }
+.inventory-progress-fill.traffic { background: linear-gradient(90deg, #f97316, #ea580c); }
+
+.capacity-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #374151;
+}
+
+.capacity-badge.full {
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #dc2626;
+}
+
+.capacity-badge.high {
+  background: #fffbeb;
+  border-color: #fde68a;
+  color: #b45309;
+}
+
+.channel-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  margin-right: 6px;
+}
+
+.channel-badge .channel-dot {
+  width: 7px;
+  height: 7px;
+}
+
+.channel-badge-news {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+}
+
+.channel-badge-music {
+  background: #f5f3ff;
+  color: #6d28d9;
+  border: 1px solid #ddd6fe;
+}
+
+.channel-badge-traffic {
+  background: #fff7ed;
+  color: #c2410c;
+  border: 1px solid #fed7aa;
+}
+
+.inventory-edit-modal {
+  max-width: 600px;
+}
+
+.inventory-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.inventory-form-grid .wide {
+  grid-column: 1 / -1;
+}
+
+.slot-editor-row {
+  display: grid;
+  grid-template-columns: 1fr 80px 80px;
+  gap: 10px;
+  align-items: end;
+  padding: 12px;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  margin-bottom: 8px;
+}
+
+.slot-editor-row .slot-remove-btn {
+  background: none;
+  border: 1px solid #fca5a5;
+  color: #dc2626;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .15s;
+}
+
+.slot-editor-row .slot-remove-btn:hover {
+  background: #fef2f2;
+}
+
+.slot-editor-list {
+  display: grid;
+  gap: 8px;
+  max-height: 300px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.add-slot-btn {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px;
+  background: #fff;
+  border: 1px dashed #d0d5dd;
+  border-radius: 6px;
+  color: #374151;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .15s;
+  margin-top: 8px;
+}
+
+.add-slot-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: #fff7ed;
+}
+
+.inventory-channel-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  margin-bottom: 16px;
+}
+
+.inventory-channel-header h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+  color: #111827;
+  font-weight: 700;
+}
+
+.inventory-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  padding: 14px;
+  background: #f8fafc;
+  border: 1px solid #e4e7ec;
+  border-radius: 8px;
+  margin-bottom: 16px;
+}
+
+.inventory-summary-item {
+  text-align: center;
+}
+
+.inventory-summary-item .is-label {
+  display: block;
+  font-size: 11px;
+  color: #667085;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.inventory-summary-item .is-value {
+  display: block;
+  font-size: 18px;
+  font-weight: 800;
+  color: #111827;
+}
+
+.inventory-summary-item .is-value.news { color: #2563eb; }
+.inventory-summary-item .is-value.music { color: #8b5cf6; }
+.inventory-summary-item .is-value.traffic { color: #f97316; }
+
+@media (max-width: 980px) {
+  .inventory-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .inventory-summary {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .inventory-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .slot-editor-row {
+    grid-template-columns: 1fr 70px 70px;
+  }
+}
+
+@media (max-width: 620px) {
+  .channel-tabs {
+    gap: 6px;
+  }
+
+  .channel-tab {
+    padding: 8px 12px;
+    font-size: 12px;
+  }
+
+  .inventory-summary {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .slot-editor-row {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .slot-editor-row .slot-remove-btn {
+    width: 100%;
+  }
+
+  .inventory-card-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .inventory-card-header .inventory-edit-btn {
+    width: 100%;
+    justify-content: center;
   }
 }
