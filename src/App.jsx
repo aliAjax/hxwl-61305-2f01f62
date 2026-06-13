@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Radio, Plus, Search, Trash2, RotateCcw, CheckCircle2, AlertTriangle, ClipboardList, CalendarDays, Users, UserPlus, Phone, Pencil, X, ChevronLeft, ChevronRight, Calendar, FileUp, XCircle, ShieldAlert, Clock, Layers, MinusCircle, Zap, CalendarRange, SkipForward, Flag, PlayCircle, ListVideo, Mic2, BarChart3, TrendingUp, PieChart, Inbox } from 'lucide-react';
+import { Radio, Plus, Search, Trash2, RotateCcw, CheckCircle2, AlertTriangle, ClipboardList, CalendarDays, Users, UserPlus, Phone, Pencil, X, ChevronLeft, ChevronRight, Calendar, FileUp, XCircle, ShieldAlert, Clock, Layers, MinusCircle, Zap, CalendarRange, SkipForward, Flag, PlayCircle, ListVideo, Mic2, BarChart3, TrendingUp, PieChart, Inbox, FileText, Package, History } from 'lucide-react';
 import './App.css';
 
 const appConfig = {
@@ -175,6 +175,24 @@ const defaultCustomers = [
   { name: '云上烘焙', contact: '王店长', phone: '137-0003-0003', preferredSlot: '12:00-13:00', historicalAmount: 1600 },
 ];
 
+const materialStorage = 'hxwl-61305-ad-materials';
+
+const materialStatuses = ['待制作', '制作中', '审核中', '已交付', '已退回'];
+
+const defaultMaterials = [];
+
+function loadMaterials() {
+  const raw = localStorage.getItem(materialStorage);
+  if (raw) {
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return defaultMaterials.map((m) => ({ ...m, id: uid() }));
+    }
+  }
+  return defaultMaterials.map((m) => ({ ...m, id: uid() }));
+}
+
 function localDateKey(date = new Date()) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -337,6 +355,21 @@ function App() {
   const [broadcastDetail, setBroadcastDetail] = useState(null);
   const [analyticsTab, setAnalyticsTab] = useState('ranking');
 
+  const [materials, setMaterials] = useState(loadMaterials);
+  const [materialModalOpen, setMaterialModalOpen] = useState(false);
+  const [materialTargetSchedule, setMaterialTargetSchedule] = useState(null);
+  const [materialForm, setMaterialForm] = useState({
+    copyTitle: '',
+    durationSeconds: '',
+    productionStatus: '待制作',
+    deliveryDate: '',
+    remarks: '',
+    statusRemark: ''
+  });
+  const [editingMaterial, setEditingMaterial] = useState(null);
+  const [materialFilter, setMaterialFilter] = useState({ query: '', status: '全部', showUndeliveredOnly: false });
+  const [materialDetail, setMaterialDetail] = useState(null);
+
   function persist(next) {
     setRecords(next);
     localStorage.setItem(appConfig.storage, JSON.stringify(next));
@@ -345,6 +378,131 @@ function App() {
   function persistCustomers(next) {
     setCustomers(next);
     localStorage.setItem(customerStorage, JSON.stringify(next));
+  }
+
+  function persistMaterials(next) {
+    setMaterials(next);
+    localStorage.setItem(materialStorage, JSON.stringify(next));
+  }
+
+  function getMaterialByScheduleId(scheduleId) {
+    return materials.find((m) => m.scheduleId === scheduleId);
+  }
+
+  function getMaterialStatusClass(status) {
+    const map = {
+      '待制作': 'status-a',
+      '制作中': 'status-b',
+      '审核中': 'status-b',
+      '已交付': 'status-c',
+      '已退回': 'status-over'
+    };
+    return map[status] || 'status-a';
+  }
+
+  function isMaterialDelivered(material) {
+    return material?.productionStatus === '已交付';
+  }
+
+  function isMaterialUndeliveredWarning(schedule, material) {
+    if (schedule.status !== '已排期') return false;
+    if (!material) return true;
+    return !isMaterialDelivered(material);
+  }
+
+  function openMaterialModal(schedule, existingMaterial = null) {
+    setMaterialTargetSchedule(schedule);
+    setEditingMaterial(existingMaterial);
+    setMaterialForm({
+      copyTitle: existingMaterial?.copyTitle || schedule.adName || '',
+      durationSeconds: existingMaterial?.durationSeconds || '',
+      productionStatus: existingMaterial?.productionStatus || '待制作',
+      deliveryDate: existingMaterial?.deliveryDate || '',
+      remarks: existingMaterial?.remarks || '',
+      statusRemark: ''
+    });
+    setMaterialModalOpen(true);
+  }
+
+  function closeMaterialModal() {
+    setMaterialModalOpen(false);
+    setMaterialTargetSchedule(null);
+    setEditingMaterial(null);
+    setMaterialForm({
+      copyTitle: '',
+      durationSeconds: '',
+      productionStatus: '待制作',
+      deliveryDate: '',
+      remarks: '',
+      statusRemark: ''
+    });
+  }
+
+  function saveMaterial(event) {
+    event.preventDefault();
+    if (!materialTargetSchedule) return;
+
+    const now = new Date().toISOString();
+    const statusChange = editingMaterial?.productionStatus !== materialForm.productionStatus;
+    const statusHistoryEntry = statusChange
+      ? {
+          status: materialForm.productionStatus,
+          at: now,
+          by: '操作员',
+          remark: materialForm.statusRemark || ''
+        }
+      : null;
+
+    if (editingMaterial) {
+      const next = materials.map((m) => {
+        if (m.id !== editingMaterial.id) return m;
+        return {
+          ...m,
+          copyTitle: materialForm.copyTitle,
+          durationSeconds: materialForm.durationSeconds,
+          productionStatus: materialForm.productionStatus,
+          deliveryDate: materialForm.deliveryDate,
+          remarks: materialForm.remarks,
+          updatedAt: now,
+          statusHistory: statusChange
+            ? [...(m.statusHistory || []), statusHistoryEntry]
+            : m.statusHistory
+        };
+      });
+      persistMaterials(next);
+      const updated = next.find((m) => m.id === editingMaterial.id);
+      if (materialDetail?.id === editingMaterial.id) setMaterialDetail(updated);
+    } else {
+      const newMaterial = {
+        id: uid(),
+        scheduleId: materialTargetSchedule.id,
+        copyTitle: materialForm.copyTitle,
+        durationSeconds: materialForm.durationSeconds,
+        productionStatus: materialForm.productionStatus,
+        deliveryDate: materialForm.deliveryDate,
+        remarks: materialForm.remarks,
+        createdAt: now,
+        updatedAt: now,
+        statusHistory: [
+          {
+            status: materialForm.productionStatus,
+            at: now,
+            by: '操作员',
+            remark: materialForm.statusRemark || '创建素材记录'
+          }
+        ]
+      };
+      persistMaterials([newMaterial, ...materials]);
+      if (materialDetail?.scheduleId === materialTargetSchedule.id) setMaterialDetail(newMaterial);
+    }
+
+    closeMaterialModal();
+  }
+
+  function removeMaterial(materialId) {
+    if (!confirm('确定要删除这条素材记录吗？')) return;
+    persistMaterials(materials.filter((m) => m.id !== materialId));
+    if (materialDetail?.id === materialId) setMaterialDetail(null);
   }
 
   function getActualPlays(item) {
@@ -794,6 +952,45 @@ function App() {
     return filteredRecords.length > 0;
   }, [filteredRecords]);
 
+  const materialListData = useMemo(() => {
+    return records
+      .filter((item) => !materialFilter.query || `${item.client}${item.adName}`.includes(materialFilter.query))
+      .filter((item) => {
+        if (materialFilter.status === '全部') return true;
+        const material = getMaterialByScheduleId(item.id);
+        return material?.productionStatus === materialFilter.status;
+      })
+      .filter((item) => {
+        if (!materialFilter.showUndeliveredOnly) return true;
+        const material = getMaterialByScheduleId(item.id);
+        return isMaterialUndeliveredWarning(item, material);
+      })
+      .sort((a, b) => {
+        const matA = getMaterialByScheduleId(a.id);
+        const matB = getMaterialByScheduleId(b.id);
+        const warnA = isMaterialUndeliveredWarning(a, matA) ? 0 : 1;
+        const warnB = isMaterialUndeliveredWarning(b, matB) ? 0 : 1;
+        if (warnA !== warnB) return warnA - warnB;
+        return (b.date || '').localeCompare(a.date || '');
+      });
+  }, [records, materials, materialFilter]);
+
+  const materialMetrics = useMemo(() => {
+    const scheduledCount = records.filter((r) => r.status === '已排期').length;
+    const withMaterial = records.filter((r) => r.status === '已排期' && getMaterialByScheduleId(r.id)).length;
+    const deliveredCount = records.filter((r) => {
+      const mat = getMaterialByScheduleId(r.id);
+      return r.status === '已排期' && isMaterialDelivered(mat);
+    }).length;
+    const undeliveredCount = scheduledCount - deliveredCount;
+    return [
+      { label: '已排期广告', value: scheduledCount },
+      { label: '已绑定素材', value: withMaterial },
+      { label: '已交付', value: deliveredCount },
+      { label: '待交付', value: undeliveredCount }
+    ];
+  }, [records, materials]);
+
   const metrics = [
     { label: "排期数", value: records.length },
     { label: "今日广告", value: records.filter((item) => item.date === today).length },
@@ -1140,7 +1337,10 @@ function App() {
           </div>
 
           <div className="records">
-            {filteredRecords.map((item) => (
+            {filteredRecords.map((item) => {
+              const material = getMaterialByScheduleId(item.id);
+              const needsMaterial = isMaterialUndeliveredWarning(item, material);
+              return (
               <article className={'record ' + (isConflicted.has(item.id) ? 'conflict' : '')} key={item.id} onClick={() => setSelected(item)}>
                 <div className="record-head">
                   <div>
@@ -1151,8 +1351,15 @@ function App() {
                 </div>
                 <p className="record-detail">{`播放${item.plays}次｜合同${money(Number(item.amount || 0))}`}</p>
                 {isConflicted.has(item.id) && <div className="warning"><AlertTriangle size={15} />发现冲突</div>}
+                {needsMaterial && <div className="material-warning"><AlertTriangle size={15} />素材未交付</div>}
                 {item.coPlay && <div className="conflict-badge-co"><Layers size={12} />可并播</div>}
                 {item.batchFlag && <div className="batch-flag-badge"><Flag size={12} />批量冲突</div>}
+                {material && (
+                  <div className="material-badge">
+                    <Package size={12} />
+                    <span className={'status small ' + getMaterialStatusClass(material.productionStatus)}>{material.productionStatus}</span>
+                  </div>
+                )}
                 <div className="actions" onClick={(event) => event.stopPropagation()}>
                   {appConfig.statuses.map((status) => (
                     <button key={status} type="button" onClick={() => updateStatus(item.id, status)}>{status}</button>
@@ -2167,6 +2374,230 @@ function App() {
         </div>
       </section>
 
+      <section className="material-section">
+        <div className="panel material-list-panel">
+          <div className="panel-title">
+            <Package size={18} />
+            <h2>广告素材清单</h2>
+            <span className="broadcast-hint">关联广告排期与素材准备状态</span>
+          </div>
+
+          <div className="metrics material-metrics">
+            {materialMetrics.map((metric) => (
+              <article className="metric" key={metric.label}>
+                <span>{metric.label}</span>
+                <strong>{metric.value}</strong>
+              </article>
+            ))}
+          </div>
+
+          <div className="toolbar">
+            <div className="search">
+              <Search size={16} />
+              <input
+                value={materialFilter.query}
+                onChange={(e) => setMaterialFilter({ ...materialFilter, query: e.target.value })}
+                placeholder="搜索客户/广告名称"
+              />
+            </div>
+            <select
+              value={materialFilter.status}
+              onChange={(e) => setMaterialFilter({ ...materialFilter, status: e.target.value })}
+            >
+              <option>全部</option>
+              {materialStatuses.map((status) => <option key={status}>{status}</option>)}
+            </select>
+            <label className="filter-checkbox">
+              <input
+                type="checkbox"
+                checked={materialFilter.showUndeliveredOnly}
+                onChange={(e) => setMaterialFilter({ ...materialFilter, showUndeliveredOnly: e.target.checked })}
+              />
+              <span>仅显示待交付</span>
+            </label>
+          </div>
+
+          <div className="material-records">
+            {materialListData.length === 0 ? (
+              <p className="empty">暂无匹配的广告排期记录。</p>
+            ) : (
+              materialListData.map((schedule) => {
+                const material = getMaterialByScheduleId(schedule.id);
+                const needsMaterial = isMaterialUndeliveredWarning(schedule, material);
+                return (
+                  <article
+                    key={schedule.id}
+                    className={`material-record ${needsMaterial ? 'needs-material' : ''}`}
+                    onClick={() => setMaterialDetail(schedule)}
+                  >
+                    <div className="material-record-head">
+                      <div>
+                        <h3>{schedule.adName}</h3>
+                        <p>{schedule.client} · {schedule.date} · {schedule.slot}</p>
+                      </div>
+                      <span className={'status ' + statusClass(schedule.status)}>{schedule.status}</span>
+                    </div>
+
+                    {material ? (
+                      <div className="material-info">
+                        <div className="material-info-row">
+                          <span className="material-info-label"><FileText size={14} />文案</span>
+                          <span className="material-info-value">{material.copyTitle || '-'}</span>
+                        </div>
+                        <div className="material-info-row">
+                          <span className="material-info-label"><Clock size={14} />时长</span>
+                          <span className="material-info-value">{material.durationSeconds ? `${material.durationSeconds}秒` : '-'}</span>
+                        </div>
+                        <div className="material-info-row">
+                          <span className="material-info-label"><CalendarDays size={14} />交付日期</span>
+                          <span className="material-info-value">{material.deliveryDate || '-'}</span>
+                        </div>
+                        <div className="material-status-row">
+                          <span className="material-info-label">制作状态</span>
+                          <span className={'status ' + getMaterialStatusClass(material.productionStatus)}>
+                            {material.productionStatus}
+                          </span>
+                        </div>
+                        {material.remarks && (
+                          <div className="material-info-row">
+                            <span className="material-info-label">备注</span>
+                            <span className="material-info-value">{material.remarks}</span>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="no-material-warning">
+                        <AlertTriangle size={16} />
+                        <span>尚未绑定素材记录</span>
+                      </div>
+                    )}
+
+                    <div className="material-actions" onClick={(e) => e.stopPropagation()}>
+                      {material ? (
+                        <>
+                          <button type="button" className="primary compact" onClick={() => openMaterialModal(schedule, material)}>
+                            <Pencil size={14} />编辑素材
+                          </button>
+                          <button type="button" className="ghost-danger compact" onClick={() => removeMaterial(material.id)}>
+                            <Trash2 size={14} />
+                          </button>
+                        </>
+                      ) : (
+                        <button type="button" className="primary compact" onClick={() => openMaterialModal(schedule)}>
+                          <Plus size={14} />绑定素材
+                        </button>
+                      )}
+                    </div>
+                  </article>
+                );
+              })
+            )}
+          </div>
+        </div>
+
+        <aside className="panel material-detail-panel">
+          <div className="panel-title">
+            <FileText size={18} />
+            <h2>素材详情</h2>
+          </div>
+          {materialDetail ? (
+            <div className="material-detail">
+              <h3>{materialDetail.adName}</h3>
+              <p>{materialDetail.client} · {materialDetail.date} · {materialDetail.slot}</p>
+              <p><span className={'status ' + statusClass(materialDetail.status)}>{materialDetail.status}</span></p>
+
+              {(() => {
+                const material = getMaterialByScheduleId(materialDetail.id);
+                if (!material) {
+                  return (
+                    <div className="material-detail-empty">
+                      <AlertTriangle size={24} />
+                      <p>此广告尚未绑定素材记录</p>
+                      <button type="button" className="primary" onClick={() => openMaterialModal(materialDetail)}>
+                        <Plus size={16} />绑定素材
+                      </button>
+                    </div>
+                  );
+                }
+                return (
+                  <>
+                    <div className="material-detail-summary">
+                      <div className="bds-item">
+                        <span className="bds-label">文案标题</span>
+                        <span className="bds-value">{material.copyTitle || '-'}</span>
+                      </div>
+                      <div className="bds-item">
+                        <span className="bds-label">时长</span>
+                        <span className="bds-value">{material.durationSeconds ? `${material.durationSeconds}秒` : '-'}</span>
+                      </div>
+                      <div className="bds-item">
+                        <span className="bds-label">制作状态</span>
+                        <span className={'status ' + getMaterialStatusClass(material.productionStatus)}>
+                          {material.productionStatus}
+                        </span>
+                      </div>
+                      <div className="bds-item">
+                        <span className="bds-label">交付日期</span>
+                        <span className="bds-value">{material.deliveryDate || '-'}</span>
+                      </div>
+                    </div>
+
+                    {material.remarks && (
+                      <div className="material-detail-remarks">
+                        <div className="detail-section-title">备注</div>
+                        <p>{material.remarks}</p>
+                      </div>
+                    )}
+
+                    <div className="material-detail-actions">
+                      <button type="button" className="primary" onClick={() => openMaterialModal(materialDetail, material)}>
+                        <Pencil size={16} />编辑素材
+                      </button>
+                      <button type="button" className="ghost-danger" onClick={() => removeMaterial(material.id)}>
+                        <Trash2 size={16} />删除
+                      </button>
+                    </div>
+
+                    <div className="detail-section-title">
+                      <History size={14} />状态变更历史
+                    </div>
+                    {material.statusHistory && material.statusHistory.length > 0 ? (
+                      <div className="material-timeline">
+                        {[...material.statusHistory]
+                          .sort((a, b) => new Date(b.at) - new Date(a.at))
+                          .map((step, index) => (
+                            <div className="material-timeline-item" key={index}>
+                              <div className="timeline-dot" />
+                              <div className="timeline-content">
+                                <div className="timeline-head">
+                                  <span className={'status small ' + getMaterialStatusClass(step.status)}>
+                                    {step.status}
+                                  </span>
+                                  <span className="timeline-time">
+                                    {step.at.replace('T', ' ').slice(0, 19)}
+                                  </span>
+                                </div>
+                                <div className="timeline-meta">
+                                  <span>操作人：{step.by}</span>
+                                  {step.remark && <span className="timeline-remark">{step.remark}</span>}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                      </div>
+                    ) : (
+                      <p className="empty">暂无状态变更记录</p>
+                    )}
+                  </>
+                );
+              })()}
+            </div>
+          ) : (
+            <p className="empty">点击左侧任意广告查看素材详情。</p>
+          )}
+        </aside>
+      </section>
+
       <section className="insights">
         <div className="panel">
           <div className="panel-title">
@@ -2363,6 +2794,96 @@ function App() {
                 </div>
               )}
 
+              <div className="detail-material-section">
+                <div className="detail-section-title">
+                  <Package size={14} />素材信息
+                </div>
+                {(() => {
+                  const material = getMaterialByScheduleId(selected.id);
+                  if (!material) {
+                    const needsMaterial = isMaterialUndeliveredWarning(selected, material);
+                    return (
+                      <div className="detail-material-empty">
+                        {needsMaterial && (
+                          <div className="material-warning inline">
+                            <AlertTriangle size={14} />素材未交付
+                          </div>
+                        )}
+                        <p>此广告尚未绑定素材记录</p>
+                        <button type="button" className="primary compact" onClick={() => openMaterialModal(selected)}>
+                          <Plus size={14} />绑定素材
+                        </button>
+                      </div>
+                    );
+                  }
+                  return (
+                    <>
+                      <div className="detail-material-summary">
+                        <div className="dbs-item">
+                          <span className="dbs-label">文案标题</span>
+                          <span className="dbs-value">{material.copyTitle || '-'}</span>
+                        </div>
+                        <div className="dbs-item">
+                          <span className="dbs-label">时长</span>
+                          <span className="dbs-value">{material.durationSeconds ? `${material.durationSeconds}秒` : '-'}</span>
+                        </div>
+                        <div className="dbs-item">
+                          <span className="dbs-label">制作状态</span>
+                          <span className={'status ' + getMaterialStatusClass(material.productionStatus)}>
+                            {material.productionStatus}
+                          </span>
+                        </div>
+                        <div className="dbs-item">
+                          <span className="dbs-label">交付日期</span>
+                          <span className="dbs-value">{material.deliveryDate || '-'}</span>
+                        </div>
+                      </div>
+                      {material.remarks && (
+                        <div className="detail-material-remarks">
+                          <div className="detail-section-title">备注</div>
+                          <p>{material.remarks}</p>
+                        </div>
+                      )}
+                      <div className="detail-material-actions">
+                        <button type="button" className="primary compact" onClick={() => openMaterialModal(selected, material)}>
+                          <Pencil size={14} />编辑素材
+                        </button>
+                      </div>
+                      <div className="detail-section-title">
+                        <History size={14} />素材状态变更历史
+                      </div>
+                      {material.statusHistory && material.statusHistory.length > 0 ? (
+                        <div className="detail-material-timeline">
+                          {[...material.statusHistory]
+                            .sort((a, b) => new Date(b.at) - new Date(a.at))
+                            .map((step, index) => (
+                              <div className="material-timeline-item" key={index}>
+                                <div className="timeline-dot" />
+                                <div className="timeline-content">
+                                  <div className="timeline-head">
+                                    <span className={'status small ' + getMaterialStatusClass(step.status)}>
+                                      {step.status}
+                                    </span>
+                                    <span className="timeline-time">
+                                      {step.at.replace('T', ' ').slice(0, 19)}
+                                    </span>
+                                  </div>
+                                  <div className="timeline-meta">
+                                    <span>操作人：{step.by}</span>
+                                    {step.remark && <span className="timeline-remark">{step.remark}</span>}
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                        </div>
+                      ) : (
+                        <p className="empty small">暂无状态变更记录</p>
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
+
               <div className="timeline">
                 {(selected.timeline || []).map((step, index) => (
                   <span key={index}>{step.at} · {step.status} · {step.by}</span>
@@ -2432,6 +2953,102 @@ function App() {
                   </button>
                   <button type="submit" className="primary">
                     <CheckCircle2 size={16} />确认登记
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {materialModalOpen && materialTargetSchedule && (
+        <div className="modal-overlay" onClick={closeMaterialModal}>
+          <div className="modal-content material-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="panel-title" style={{ marginBottom: 0 }}>
+                <Package size={18} />
+                <h2>{editingMaterial ? '编辑素材' : '绑定素材'}</h2>
+              </div>
+              <button type="button" className="modal-close" onClick={closeMaterialModal}>
+                <X size={20} />
+              </button>
+            </div>
+            <div className="modal-body">
+              <div className="broadcast-modal-info">
+                <p><strong>广告：</strong>{materialTargetSchedule.adName}</p>
+                <p><strong>客户：</strong>{materialTargetSchedule.client}</p>
+                <p><strong>投放日期：</strong>{materialTargetSchedule.date}</p>
+                <p><strong>时段：</strong>{materialTargetSchedule.slot}</p>
+              </div>
+              <form onSubmit={saveMaterial}>
+                <div className="form-grid">
+                  <label className="wide">
+                    <span>文案标题</span>
+                    <input
+                      type="text"
+                      value={materialForm.copyTitle}
+                      onChange={(e) => setMaterialForm({ ...materialForm, copyTitle: e.target.value })}
+                      placeholder="618门店促销宣传语"
+                      required
+                    />
+                  </label>
+                  <label>
+                    <span>时长（秒）</span>
+                    <input
+                      type="number"
+                      min="1"
+                      max="3600"
+                      value={materialForm.durationSeconds}
+                      onChange={(e) => setMaterialForm({ ...materialForm, durationSeconds: e.target.value })}
+                      placeholder="30"
+                      required
+                    />
+                  </label>
+                  <label>
+                    <span>制作状态</span>
+                    <select
+                      value={materialForm.productionStatus}
+                      onChange={(e) => setMaterialForm({ ...materialForm, productionStatus: e.target.value })}
+                    >
+                      {materialStatuses.map((status) => <option key={status}>{status}</option>)}
+                    </select>
+                  </label>
+                  <label>
+                    <span>交付日期</span>
+                    <input
+                      type="date"
+                      value={materialForm.deliveryDate}
+                      onChange={(e) => setMaterialForm({ ...materialForm, deliveryDate: e.target.value })}
+                    />
+                  </label>
+                  {editingMaterial && editingMaterial.productionStatus !== materialForm.productionStatus && (
+                    <label className="wide">
+                      <span>状态变更说明</span>
+                      <textarea
+                        value={materialForm.statusRemark}
+                        onChange={(e) => setMaterialForm({ ...materialForm, statusRemark: e.target.value })}
+                        placeholder="可选，填写本次状态变更的原因或说明"
+                        rows={2}
+                      />
+                    </label>
+                  )}
+                  <label className="wide">
+                    <span>备注</span>
+                    <textarea
+                      value={materialForm.remarks}
+                      onChange={(e) => setMaterialForm({ ...materialForm, remarks: e.target.value })}
+                      placeholder="可选，填写素材相关的其他说明"
+                      rows={3}
+                    />
+                  </label>
+                </div>
+                <div className="modal-actions">
+                  <button type="button" className="cancel-btn" onClick={closeMaterialModal}>
+                    取消
+                  </button>
+                  <button type="submit" className="primary">
+                    <CheckCircle2 size={16} />
+                    {editingMaterial ? '保存修改' : '绑定素材'}
                   </button>
                 </div>
               </form>
