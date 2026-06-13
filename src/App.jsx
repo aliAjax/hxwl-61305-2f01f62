@@ -228,7 +228,7 @@ const csvColumnMap = {
   '合同金额': 'amount',
 };
 
-const requiredCsvColumns = ['客户', '广告名称', '投放日期', '时段'];
+const requiredCsvColumns = ['客户', '广告名称', '投放日期', '时段', '播放次数', '合同金额'];
 
 function parseCsv(text) {
   const lines = text.trim().split(/\r?\n/).filter((line) => line.trim());
