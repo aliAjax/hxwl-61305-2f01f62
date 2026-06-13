@@ -1411,7 +1411,8 @@ function App() {
                   <button className="ghost-danger" type="button" onClick={() => removeRecord(item.id)}><Trash2 size={14} /></button>
                 </div>
               </article>
-            ))}
+              );
+            })}
           </div>
         </section>
       </section>
