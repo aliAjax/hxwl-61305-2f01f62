@@ -636,6 +636,14 @@ function App() {
     return dates;
   }
 
+  function distributeTotalAmount(totalAmount, totalRecords) {
+    if (!totalRecords) return [];
+    const total = totalAmount && Number(totalAmount) > 0 ? Math.round(Number(totalAmount)) : 0;
+    const base = Math.floor(total / totalRecords);
+    const remainder = total % totalRecords;
+    return Array.from({ length: totalRecords }, (_, index) => String(base + (index < remainder ? 1 : 0)));
+  }
+
   function generateBatchPreview() {
     const { client, adName, startDate, endDate, weekdays, slots, playsPerDay, totalAmount, status } = batchForm;
 
@@ -651,14 +659,13 @@ function App() {
     }
 
     const totalRecords = dates.length * slots.length;
-    const perRecordAmount = totalAmount && Number(totalAmount) > 0
-      ? String(Math.round(Number(totalAmount) / totalRecords))
-      : '0';
+    const amountValues = distributeTotalAmount(totalAmount, totalRecords);
     const perRecordPlays = playsPerDay && Number(playsPerDay) > 0
       ? String(Math.max(1, Math.round(Number(playsPerDay) / slots.length)))
       : '1';
 
     const previewRows = [];
+    let rowIndex = 0;
     dates.forEach((date, dateIdx) => {
       slots.forEach((slot, slotIdx) => {
         const key = `${date}::${slot}`;
@@ -671,7 +678,7 @@ function App() {
           date,
           slot,
           plays: perRecordPlays,
-          amount: perRecordAmount,
+          amount: amountValues[rowIndex] || '0',
           status,
           hasConflict,
           conflictWith: existingRecords.map((r) => ({
@@ -680,22 +687,26 @@ function App() {
             adName: r.adName,
           })),
         });
+        rowIndex += 1;
       });
     });
 
     const conflictCount = previewRows.filter((r) => r.hasConflict).length;
     const normalCount = previewRows.length - conflictCount;
+    const amountNumbers = previewRows.map((r) => Number(r.amount || 0));
+    const minAmount = Math.min(...amountNumbers);
+    const maxAmount = Math.max(...amountNumbers);
 
     setBatchPreview({
       rows: previewRows,
       totalCount: previewRows.length,
       normalCount,
       conflictCount,
-      totalAmount: perRecordAmount === '0' ? 0 : Number(perRecordAmount) * previewRows.length,
+      totalAmount: amountNumbers.reduce((sum, value) => sum + value, 0),
       totalPlays: Number(perRecordPlays) * previewRows.length,
       dates,
       slots,
-      perRecordAmount,
+      perRecordAmount: minAmount === maxAmount ? money(minAmount) : `${money(minAmount)}-${money(maxAmount)}`,
       perRecordPlays,
     });
   }
@@ -1241,7 +1252,7 @@ function App() {
               </div>
               <div className="batch-summary-item">
                 <span className="bs-label">每条金额</span>
-                <span className="bs-value amount">{money(Number(batchPreview.perRecordAmount))}</span>
+                <span className="bs-value amount">{batchPreview.perRecordAmount}</span>
               </div>
               <div className="batch-summary-item">
                 <span className="bs-label">总播放</span>
