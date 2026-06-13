@@ -196,6 +196,203 @@ textarea { min-height: 76px; resize: vertical; }
 }
 .actions .ghost-danger { color: #b42318; }
 
+.calendar-section {
+  margin-top: 18px;
+}
+
+.calendar-panel {
+  padding: 18px;
+}
+
+.calendar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.calendar-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.nav-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid #d0d5dd;
+  background: #fff;
+  border-radius: 6px;
+  color: #344054;
+  transition: border-color .16s, background .16s;
+}
+
+.nav-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.week-label {
+  font-weight: 700;
+  color: #111827;
+  min-width: 140px;
+  text-align: center;
+  font-size: 14px;
+}
+
+.today-btn {
+  border: 1px solid var(--accent);
+  background: #fff;
+  color: var(--accent);
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 700;
+  transition: background .16s, color .16s;
+}
+
+.today-btn:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
+.week-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.calendar-day {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 12px 10px;
+  background: #ffffff;
+  cursor: pointer;
+  transition: border-color .16s, box-shadow .16s, transform .16s;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.calendar-day:hover {
+  border-color: var(--accent);
+  box-shadow: 0 8px 28px rgba(15, 23, 42, .08);
+  transform: translateY(-2px);
+}
+
+.calendar-day.today {
+  border-color: var(--accent);
+  background: linear-gradient(135deg, #fff7ed 0%, #ffffff 100%);
+}
+
+.calendar-day.selected {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 8px 28px rgba(249, 115, 22, .25);
+}
+
+.calendar-day.empty {
+  opacity: 0.6;
+}
+
+.day-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.day-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #667085;
+}
+
+.calendar-day.selected .day-name,
+.calendar-day.selected .stat-label {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.day-num {
+  font-size: 20px;
+  font-weight: 800;
+  color: #111827;
+}
+
+.calendar-day.today .day-num {
+  color: var(--accent);
+}
+
+.calendar-day.selected .day-num {
+  color: #fff;
+}
+
+.day-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.day-stat {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+}
+
+.stat-label {
+  color: #98a2b3;
+  font-weight: 500;
+}
+
+.stat-value {
+  font-weight: 700;
+  color: #111827;
+}
+
+.calendar-day.selected .stat-value {
+  color: #fff;
+}
+
+.stat-value.amount {
+  color: var(--accent);
+  font-weight: 800;
+}
+
+.calendar-day.selected .stat-value.amount {
+  color: #fff;
+}
+
+.filter-hint {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 14px;
+  padding: 10px 14px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #166534;
+  font-weight: 600;
+}
+
+.filter-hint button {
+  background: none;
+  border: none;
+  color: #166534;
+  text-decoration: underline;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 0;
+  cursor: pointer;
+}
+
 .insights {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 380px;
@@ -352,6 +549,12 @@ textarea { min-height: 76px; resize: vertical; }
   .hero, .workspace, .insights, .archive-section { grid-template-columns: 1fr; display: grid; }
   .metrics { grid-template-columns: 1fr; }
   .port-card { min-height: 110px; border-left: 0; border-top: 4px solid var(--accent); }
+  .week-grid { grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+  .calendar-day { padding: 8px 6px; gap: 6px; }
+  .day-num { font-size: 16px; }
+  .day-name { font-size: 11px; }
+  .day-stat { font-size: 11px; }
+  .stat-value.amount { font-size: 10px; }
 }
 
 @media (max-width: 620px) {

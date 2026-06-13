@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Radio, Plus, Search, Trash2, RotateCcw, CheckCircle2, AlertTriangle, ClipboardList, CalendarDays, Users, UserPlus, Phone, Pencil, X } from 'lucide-react';
+import { Radio, Plus, Search, Trash2, RotateCcw, CheckCircle2, AlertTriangle, ClipboardList, CalendarDays, Users, UserPlus, Phone, Pencil, X, ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
 import './App.css';
 
 const appConfig = {
@@ -232,6 +232,8 @@ function App() {
   const [customers, setCustomers] = useState(loadCustomers);
   const [customerForm, setCustomerForm] = useState({ name: '', contact: '', phone: '', preferredSlot: '', historicalAmount: '' });
   const [editingCustomer, setEditingCustomer] = useState(null);
+  const [selectedDate, setSelectedDate] = useState(null);
+  const [weekOffset, setWeekOffset] = useState(0);
 
   function persist(next) {
     setRecords(next);
@@ -364,6 +366,7 @@ function App() {
     return records
       .filter((item) => !filters.query || `${item.client}${item.adName}`.includes(filters.query))
       .filter((item) => filters.status === '全部' || item.status === filters.status)
+      .filter((item) => !selectedDate || item.date === selectedDate)
       .sort((a, b) => {
         if (appConfig.sort === 'priority') {
           const rank = priorityRank(a.priority) - priorityRank(b.priority);
@@ -373,7 +376,7 @@ function App() {
         const bDate = b[appConfig.dateKey] || b.sentAt || b.createdAt || '';
         return String(aDate).localeCompare(String(bDate));
       });
-  }, [records, filters]);
+  }, [records, filters, selectedDate]);
 
   const metrics = [
     { label: "排期数", value: records.length },
@@ -396,6 +399,60 @@ function App() {
       return acc;
     }, {});
   }, [records]);
+
+  const weekDays = useMemo(() => {
+    const baseDate = new Date(today);
+    baseDate.setDate(baseDate.getDate() + weekOffset * 7);
+    const dayOfWeek = baseDate.getDay();
+    const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+    const monday = new Date(baseDate);
+    monday.setDate(baseDate.getDate() + mondayOffset);
+
+    const days = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(monday);
+      d.setDate(monday.getDate() + i);
+      const dateStr = d.toISOString().slice(0, 10);
+      days.push({
+        date: dateStr,
+        dayName: ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][d.getDay()],
+        dayNum: d.getDate(),
+        isToday: dateStr === today,
+      });
+    }
+    return days;
+  }, [weekOffset, today]);
+
+  const weekRangeLabel = useMemo(() => {
+    if (weekDays.length === 0) return '';
+    const first = weekDays[0];
+    const last = weekDays[6];
+    const f = new Date(first.date);
+    const l = new Date(last.date);
+    return `${f.getMonth() + 1}月${f.getDate()}日 - ${l.getMonth() + 1}月${l.getDate()}日`;
+  }, [weekDays]);
+
+  const dailyStats = useMemo(() => {
+    const stats = {};
+    records.forEach((item) => {
+      const d = item.date;
+      if (!stats[d]) {
+        stats[d] = { count: 0, plays: 0, amount: 0 };
+      }
+      stats[d].count += 1;
+      stats[d].plays += Number(item.plays || 0);
+      stats[d].amount += Number(item.amount || 0);
+    });
+    return stats;
+  }, [records]);
+
+  function toggleDateFilter(date) {
+    if (selectedDate === date) {
+      setSelectedDate(null);
+    } else {
+      setSelectedDate(date);
+    }
+  }
 
   return (
     <main className="shell" style={{ '--accent': appConfig.accent }}>
@@ -559,6 +616,67 @@ function App() {
               </article>
             ))}
           </div>
+        </div>
+      </section>
+
+      <section className="calendar-section">
+        <div className="panel calendar-panel">
+          <div className="calendar-header">
+            <div className="panel-title" style={{ marginBottom: 0 }}>
+              <Calendar size={18} />
+              <h2>排期日历</h2>
+            </div>
+            <div className="calendar-nav">
+              <button type="button" className="nav-btn" onClick={() => setWeekOffset(weekOffset - 1)}>
+                <ChevronLeft size={18} />
+              </button>
+              <span className="week-label">{weekRangeLabel}</span>
+              <button type="button" className="nav-btn" onClick={() => setWeekOffset(weekOffset + 1)}>
+                <ChevronRight size={18} />
+              </button>
+              <button type="button" className="today-btn" onClick={() => { setWeekOffset(0); setSelectedDate(null); }}>
+                今天
+              </button>
+            </div>
+          </div>
+          <div className="week-grid">
+            {weekDays.map((day) => {
+              const stats = dailyStats[day.date] || { count: 0, plays: 0, amount: 0 };
+              const isSelected = selectedDate === day.date;
+              return (
+                <div
+                  key={day.date}
+                  className={`calendar-day ${day.isToday ? 'today' : ''} ${isSelected ? 'selected' : ''} ${stats.count === 0 ? 'empty' : ''}`}
+                  onClick={() => toggleDateFilter(day.date)}
+                >
+                  <div className="day-head">
+                    <span className="day-name">{day.dayName}</span>
+                    <span className="day-num">{day.dayNum}</span>
+                  </div>
+                  <div className="day-stats">
+                    <div className="day-stat">
+                      <span className="stat-label">广告数</span>
+                      <span className="stat-value">{stats.count}</span>
+                    </div>
+                    <div className="day-stat">
+                      <span className="stat-label">播放次</span>
+                      <span className="stat-value">{stats.plays}</span>
+                    </div>
+                    <div className="day-stat">
+                      <span className="stat-label">合同额</span>
+                      <span className="stat-value amount">{money(stats.amount)}</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {selectedDate && (
+            <div className="filter-hint">
+              <span>已筛选：{selectedDate}</span>
+              <button type="button" onClick={() => setSelectedDate(null)}>清除筛选</button>
+            </div>
+          )}
         </div>
       </section>
 
