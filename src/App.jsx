@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Radio, Plus, Search, Trash2, RotateCcw, CheckCircle2, AlertTriangle, ClipboardList, CalendarDays, Users, UserPlus, Phone, Pencil, X, ChevronLeft, ChevronRight, Calendar, FileUp, XCircle, ShieldAlert, Clock, Layers, MinusCircle, Zap, CalendarRange, SkipForward, Flag, PlayCircle, ListVideo, TrendingUp, AlertCircle, Mic2, CircleDot, CircleDashed, CircleAlert } from 'lucide-react';
+import { Radio, Plus, Search, Trash2, RotateCcw, CheckCircle2, AlertTriangle, ClipboardList, CalendarDays, Users, UserPlus, Phone, Pencil, X, ChevronLeft, ChevronRight, Calendar, FileUp, XCircle, ShieldAlert, Clock, Layers, MinusCircle, Zap, CalendarRange, SkipForward, Flag, PlayCircle, ListVideo, Mic2 } from 'lucide-react';
 import './App.css';
 
 const appConfig = {
