@@ -175,7 +175,19 @@ const defaultCustomers = [
   { name: '云上烘焙', contact: '王店长', phone: '137-0003-0003', preferredSlot: '12:00-13:00', historicalAmount: 1600 },
 ];
 
-const today = new Date().toISOString().slice(0, 10);
+function localDateKey(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function parseDateKey(dateKey) {
+  const [year, month, day] = String(dateKey || '').split('-').map(Number);
+  return new Date(year, (month || 1) - 1, day || 1);
+}
+
+const today = localDateKey();
 
 function uid() {
   return Math.random().toString(36).slice(2, 10);
@@ -221,8 +233,8 @@ function money(value) {
 
 function inNextDays(dateText, days) {
   if (!dateText) return false;
-  const date = new Date(dateText);
-  const now = new Date(today);
+  const date = parseDateKey(dateText);
+  const now = parseDateKey(today);
   const diff = (date.getTime() - now.getTime()) / 86400000;
   return diff >= 0 && diff <= days;
 }
@@ -611,7 +623,7 @@ function App() {
   }, [records]);
 
   const weekDays = useMemo(() => {
-    const baseDate = new Date(today);
+    const baseDate = parseDateKey(today);
     baseDate.setDate(baseDate.getDate() + weekOffset * 7);
     const dayOfWeek = baseDate.getDay();
     const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
@@ -622,7 +634,7 @@ function App() {
     for (let i = 0; i < 7; i++) {
       const d = new Date(monday);
       d.setDate(monday.getDate() + i);
-      const dateStr = d.toISOString().slice(0, 10);
+      const dateStr = localDateKey(d);
       days.push({
         date: dateStr,
         dayName: ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][d.getDay()],
@@ -751,12 +763,12 @@ function App() {
   }, [filteredRecords, isConflicted]);
 
   const last7DaysRevenue = useMemo(() => {
-    const baseDate = new Date(today);
+    const baseDate = parseDateKey(today);
     const days = [];
     for (let i = 6; i >= 0; i--) {
       const d = new Date(baseDate);
       d.setDate(baseDate.getDate() - i);
-      const dateStr = d.toISOString().slice(0, 10);
+      const dateStr = localDateKey(d);
       days.push({
         date: dateStr,
         dayName: ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][d.getDay()],
@@ -842,14 +854,14 @@ function App() {
 
   function getDatesInRange(startDate, endDate, weekdays) {
     const dates = [];
-    const start = new Date(startDate);
-    const end = new Date(endDate);
+    const start = parseDateKey(startDate);
+    const end = parseDateKey(endDate);
     if (isNaN(start.getTime()) || isNaN(end.getTime()) || start > end) return dates;
     const current = new Date(start);
     while (current <= end) {
       const dayOfWeek = current.getDay();
       if (weekdays.includes(dayOfWeek)) {
-        dates.push(current.toISOString().slice(0, 10));
+        dates.push(localDateKey(current));
       }
       current.setDate(current.getDate() + 1);
     }
