@@ -143,9 +143,9 @@ const appConfig = {
 const customerStorage = 'hxwl-61305-customer-archive';
 
 const defaultCustomers = [
-  { name: '蓝海家居', contact: '张经理', phone: '138-0001-0001', preferredSlot: '08:00-09:00' },
-  { name: '北城眼镜', contact: '李总', phone: '139-0002-0002', preferredSlot: '18:00-19:00' },
-  { name: '云上烘焙', contact: '王店长', phone: '137-0003-0003', preferredSlot: '12:00-13:00' },
+  { name: '蓝海家居', contact: '张经理', phone: '138-0001-0001', preferredSlot: '08:00-09:00', historicalAmount: 3600 },
+  { name: '北城眼镜', contact: '李总', phone: '139-0002-0002', preferredSlot: '18:00-19:00', historicalAmount: 2800 },
+  { name: '云上烘焙', contact: '王店长', phone: '137-0003-0003', preferredSlot: '12:00-13:00', historicalAmount: 1600 },
 ];
 
 const today = new Date().toISOString().slice(0, 10);
@@ -230,7 +230,7 @@ function App() {
   const [filters, setFilters] = useState({ query: '', status: '全部' });
   const [selected, setSelected] = useState(null);
   const [customers, setCustomers] = useState(loadCustomers);
-  const [customerForm, setCustomerForm] = useState({ name: '', contact: '', phone: '', preferredSlot: '' });
+  const [customerForm, setCustomerForm] = useState({ name: '', contact: '', phone: '', preferredSlot: '', historicalAmount: '' });
   const [editingCustomer, setEditingCustomer] = useState(null);
 
   function persist(next) {
@@ -246,28 +246,38 @@ function App() {
   function addCustomer(event) {
     event.preventDefault();
     if (!customerForm.name.trim()) return;
-    const newCustomer = { id: uid(), ...customerForm };
+    const newCustomer = { id: uid(), ...customerForm, historicalAmount: Number(customerForm.historicalAmount || 0) };
     persistCustomers([...customers, newCustomer]);
-    setCustomerForm({ name: '', contact: '', phone: '', preferredSlot: '' });
+    setCustomerForm({ name: '', contact: '', phone: '', preferredSlot: '', historicalAmount: '' });
   }
 
   function startEditCustomer(customer) {
     setEditingCustomer(customer.id);
-    setCustomerForm({ name: customer.name, contact: customer.contact, phone: customer.phone, preferredSlot: customer.preferredSlot || '' });
+    setCustomerForm({
+      name: customer.name,
+      contact: customer.contact,
+      phone: customer.phone,
+      preferredSlot: customer.preferredSlot || '',
+      historicalAmount: customer.historicalAmount || ''
+    });
   }
 
   function saveEditCustomer(event) {
     event.preventDefault();
     if (!customerForm.name.trim()) return;
-    const next = customers.map((c) => c.id === editingCustomer ? { ...c, ...customerForm } : c);
+    const next = customers.map((c) => c.id === editingCustomer ? {
+      ...c,
+      ...customerForm,
+      historicalAmount: Number(customerForm.historicalAmount || 0)
+    } : c);
     persistCustomers(next);
     setEditingCustomer(null);
-    setCustomerForm({ name: '', contact: '', phone: '', preferredSlot: '' });
+    setCustomerForm({ name: '', contact: '', phone: '', preferredSlot: '', historicalAmount: '' });
   }
 
   function cancelEditCustomer() {
     setEditingCustomer(null);
-    setCustomerForm({ name: '', contact: '', phone: '', preferredSlot: '' });
+    setCustomerForm({ name: '', contact: '', phone: '', preferredSlot: '', historicalAmount: '' });
   }
 
   function removeCustomer(id) {
@@ -515,6 +525,10 @@ function App() {
                   {appConfig.fields.find((f) => f.key === 'slot')?.options.map((opt) => <option key={opt}>{opt}</option>)}
                 </select>
               </label>
+              <label>
+                <span>历史合同额（元）</span>
+                <input type="number" value={customerForm.historicalAmount} onChange={(event) => setCustomerForm({ ...customerForm, historicalAmount: event.target.value })} placeholder="50000" />
+              </label>
             </div>
             <div className="archive-form-actions">
               <button className="primary" type="submit">
@@ -537,7 +551,7 @@ function App() {
                   </div>
                   <span className="customer-slot">{customer.preferredSlot || '不限'}</span>
                 </div>
-                <p className="customer-amount">历史合同额：{money(customerAmount(customer.name))}</p>
+                <p className="customer-amount">历史合同额：{money(Number(customer.historicalAmount || 0))}</p>
                 <div className="actions" onClick={(event) => event.stopPropagation()}>
                   <button type="button" onClick={() => startEditCustomer(customer)}><Pencil size={14} />编辑</button>
                   <button className="ghost-danger" type="button" onClick={() => removeCustomer(customer.id)}><Trash2 size={14} /></button>
