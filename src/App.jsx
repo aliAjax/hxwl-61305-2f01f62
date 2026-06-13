@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Radio, Plus, Search, Trash2, RotateCcw, CheckCircle2, AlertTriangle, ClipboardList, CalendarDays, Users, UserPlus, Phone, Pencil, X, ChevronLeft, ChevronRight, Calendar, FileUp, XCircle, ShieldAlert, Clock, Layers, MinusCircle, Zap, CalendarRange, SkipForward, Flag, PlayCircle, ListVideo, Mic2, BarChart3, TrendingUp, PieChart, Inbox, FileText, Package, History } from 'lucide-react';
 import './App.css';
 
@@ -489,6 +489,15 @@ function App() {
   const [materialFilter, setMaterialFilter] = useState({ query: '', status: '全部', showUndeliveredOnly: false });
   const [materialDetail, setMaterialDetail] = useState(null);
 
+  useEffect(() => {
+    if (filters.channel !== '全部') {
+      setSelectedChannel(filters.channel);
+      const channelSlots = getChannelSlots(filters.channel);
+      setForm((prev) => ({ ...prev, channelId: filters.channel, slot: channelSlots[0] || prev.slot }));
+      setBatchForm((prev) => ({ ...prev, channelId: filters.channel, slots: [] }));
+    }
+  }, [filters.channel]);
+
   function persist(next) {
     setRecords(next);
     localStorage.setItem(appConfig.storage, JSON.stringify(next));
@@ -850,10 +859,34 @@ function App() {
 
   function addRecord(event) {
     event.preventDefault();
+    const targetChannelId = form.channelId || selectedChannel;
+    const targetSlot = form.slot;
+    const targetDate = form.date;
+
+    if (targetChannelId && targetSlot && targetDate) {
+      const channelInv = getChannelInventory(targetChannelId, inventory);
+      const slotConfig = channelInv?.slots?.find((s) => s.slot === targetSlot);
+      const capacity = slotConfig?.capacity ?? 1;
+      const isEnabled = slotConfig?.enabled !== false;
+      const currentUsage = records.filter(
+        (r) => r.channelId === targetChannelId && r.date === targetDate && r.slot === targetSlot && !r.coPlay
+      ).length;
+
+      if (!isEnabled) {
+        const confirmAdd = confirm(`警告：频道「${getChannelById(targetChannelId)?.name}」的时段「${targetSlot}」已被禁用，是否仍要添加？`);
+        if (!confirmAdd) return;
+      } else if (currentUsage >= capacity) {
+        const confirmAdd = confirm(
+          `警告：频道「${getChannelById(targetChannelId)?.name}」时段「${targetSlot}」容量为${capacity}条，当前已有${currentUsage}条记录，是否继续添加？`
+        );
+        if (!confirmAdd) return;
+      }
+    }
+
     const nextRecord = {
       id: uid(),
       ...form,
-      channelId: form.channelId || selectedChannel,
+      channelId: targetChannelId,
       status: form.status || appConfig.primaryStatus,
       createdAt: new Date().toISOString(),
       timeline: [{ status: form.status || appConfig.primaryStatus, at: today, by: '录入' }]
@@ -866,7 +899,8 @@ function App() {
     }
 
     persist([nextRecord, ...records]);
-    setForm({ ...appConfig.defaultValues, channelId: selectedChannel });
+    const channelSlots = getChannelSlots(targetChannelId);
+    setForm({ ...appConfig.defaultValues, channelId: targetChannelId, slot: channelSlots[0] || '' });
     setSelected(nextRecord);
   }
 
@@ -1007,12 +1041,23 @@ function App() {
     const groups = [];
     Object.entries(slotMap).forEach(([key, items]) => {
       const nonCoPlay = items.filter((r) => !r.coPlay);
-      if (nonCoPlay.length > 1) {
-        const [channelId, date, slot] = key.split('::');
+      const [channelId, date, slot] = key.split('::');
+      const channelInv = getChannelInventory(channelId, inventory);
+      const slotConfig = channelInv?.slots?.find((s) => s.slot === slot);
+      const capacity = slotConfig?.capacity ?? 1;
+      const isEnabled = slotConfig?.enabled !== false;
+      const isOverCapacity = isEnabled && nonCoPlay.length > capacity;
+      const isMultiRecord = nonCoPlay.length > 1;
+      const isCapacityConflict = isEnabled && capacity === 0;
+      if (isMultiRecord || isOverCapacity || isCapacityConflict) {
         const totalPlays = nonCoPlay.reduce((sum, r) => sum + Number(r.plays || 0), 0);
         const totalAmount = nonCoPlay.reduce((sum, r) => sum + Number(r.amount || 0), 0);
         const clients = [...new Set(nonCoPlay.map((r) => r.client))];
         const channel = getChannelById(channelId);
+        let conflictType = 'overlap';
+        if (isCapacityConflict) conflictType = 'disabled';
+        else if (isOverCapacity && !isMultiRecord) conflictType = 'overcapacity';
+        else if (isOverCapacity && isMultiRecord) conflictType = 'both';
         groups.push({
           key,
           channelId,
@@ -1024,13 +1069,16 @@ function App() {
           totalPlays,
           totalAmount,
           clients,
-          conflictCount: nonCoPlay.length
+          conflictCount: nonCoPlay.length,
+          capacity,
+          isEnabled,
+          conflictType
         });
       }
     });
     groups.sort((a, b) => a.channelId.localeCompare(b.channelId) || a.date.localeCompare(b.date) || a.slot.localeCompare(b.slot));
     return groups;
-  }, [records]);
+  }, [records, inventory]);
 
   const isConflicted = useMemo(() => {
     const set = new Set();
@@ -1065,7 +1113,7 @@ function App() {
 
   const slotUtilizationStats = useMemo(() => {
     let slotOptions;
-    if (filters.channel === '全部' || filters.channel === '全部频道') {
+    if (filters.channel === '全部') {
       const allSlots = new Set();
       channels.forEach((ch) => ch.slots.forEach((s) => allSlots.add(s)));
       slotOptions = Array.from(allSlots);
@@ -1617,7 +1665,7 @@ function App() {
               <input value={filters.query} onChange={(event) => setFilters({ ...filters, query: event.target.value })} placeholder={appConfig.filters[0]?.label || '搜索'} />
             </div>
             <select value={filters.channel} onChange={(event) => setFilters({ ...filters, channel: event.target.value })}>
-              <option>全部频道</option>
+              <option value="全部">全部频道</option>
               {channels.map((channel) => <option key={channel.id} value={channel.id}>{channel.name}</option>)}
             </select>
             <select value={filters.status} onChange={(event) => setFilters({ ...filters, status: event.target.value })}>
