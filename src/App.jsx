@@ -431,6 +431,30 @@ function getChannelInventory(channelId, inventory) {
   return inventory?.[channelId] || defaultInventory[channelId];
 }
 
+function getEnabledInventorySlots(channelId, inventory) {
+  const inventorySlots = getChannelInventory(channelId, inventory)?.slots || [];
+  const enabledSlots = inventorySlots
+    .filter((slot) => slot.enabled !== false && Number(slot.capacity || 0) > 0)
+    .map((slot) => slot.slot)
+    .filter(Boolean);
+  return enabledSlots.length > 0 ? enabledSlots : getChannelSlots(channelId);
+}
+
+function getInventorySlotConfig(channelId, slotName, inventory) {
+  return getChannelInventory(channelId, inventory)?.slots?.find((slot) => slot.slot === slotName);
+}
+
+function getSlotCapacityState(channelId, slotName, count, inventory) {
+  const slotConfig = getInventorySlotConfig(channelId, slotName, inventory);
+  const capacity = Number(slotConfig?.capacity ?? 1);
+  const isEnabled = slotConfig?.enabled !== false && capacity > 0;
+  return {
+    capacity,
+    isEnabled,
+    isOverCapacity: !isEnabled ? count > 0 : count > capacity,
+  };
+}
+
 function App() {
   const [records, setRecords] = useState(loadRecords);
   const [selectedChannel, setSelectedChannel] = useState('channel-news');
@@ -492,11 +516,29 @@ function App() {
   useEffect(() => {
     if (filters.channel !== '全部') {
       setSelectedChannel(filters.channel);
-      const channelSlots = getChannelSlots(filters.channel);
-      setForm((prev) => ({ ...prev, channelId: filters.channel, slot: channelSlots[0] || prev.slot }));
+      const channelSlots = getEnabledInventorySlots(filters.channel, inventory);
+      setForm((prev) => ({
+        ...prev,
+        channelId: filters.channel,
+        slot: channelSlots.includes(prev.slot) ? prev.slot : channelSlots[0] || '',
+      }));
       setBatchForm((prev) => ({ ...prev, channelId: filters.channel, slots: [] }));
     }
-  }, [filters.channel]);
+  }, [filters.channel, inventory]);
+
+  useEffect(() => {
+    setForm((prev) => {
+      const channelId = prev.channelId || selectedChannel;
+      const channelSlots = getEnabledInventorySlots(channelId, inventory);
+      if (channelSlots.includes(prev.slot)) return prev;
+      return { ...prev, slot: channelSlots[0] || '' };
+    });
+    setBatchForm((prev) => {
+      const channelSlots = getEnabledInventorySlots(prev.channelId, inventory);
+      const nextSlots = prev.slots.filter((slot) => channelSlots.includes(slot));
+      return nextSlots.length === prev.slots.length ? prev : { ...prev, slots: nextSlots };
+    });
+  }, [inventory, selectedChannel]);
 
   function persist(next) {
     setRecords(next);
@@ -864,13 +906,10 @@ function App() {
     const targetDate = form.date;
 
     if (targetChannelId && targetSlot && targetDate) {
-      const channelInv = getChannelInventory(targetChannelId, inventory);
-      const slotConfig = channelInv?.slots?.find((s) => s.slot === targetSlot);
-      const capacity = slotConfig?.capacity ?? 1;
-      const isEnabled = slotConfig?.enabled !== false;
       const currentUsage = records.filter(
         (r) => r.channelId === targetChannelId && r.date === targetDate && r.slot === targetSlot && !r.coPlay
       ).length;
+      const { capacity, isEnabled } = getSlotCapacityState(targetChannelId, targetSlot, currentUsage, inventory);
 
       if (!isEnabled) {
         const confirmAdd = confirm(`警告：频道「${getChannelById(targetChannelId)?.name}」的时段「${targetSlot}」已被禁用，是否仍要添加？`);
@@ -899,7 +938,7 @@ function App() {
     }
 
     persist([nextRecord, ...records]);
-    const channelSlots = getChannelSlots(targetChannelId);
+    const channelSlots = getEnabledInventorySlots(targetChannelId, inventory);
     setForm({ ...appConfig.defaultValues, channelId: targetChannelId, slot: channelSlots[0] || '' });
     setSelected(nextRecord);
   }
@@ -1042,22 +1081,12 @@ function App() {
     Object.entries(slotMap).forEach(([key, items]) => {
       const nonCoPlay = items.filter((r) => !r.coPlay);
       const [channelId, date, slot] = key.split('::');
-      const channelInv = getChannelInventory(channelId, inventory);
-      const slotConfig = channelInv?.slots?.find((s) => s.slot === slot);
-      const capacity = slotConfig?.capacity ?? 1;
-      const isEnabled = slotConfig?.enabled !== false;
-      const isOverCapacity = isEnabled && nonCoPlay.length > capacity;
-      const isMultiRecord = nonCoPlay.length > 1;
-      const isCapacityConflict = isEnabled && capacity === 0;
-      if (isMultiRecord || isOverCapacity || isCapacityConflict) {
+      const { capacity, isEnabled, isOverCapacity } = getSlotCapacityState(channelId, slot, nonCoPlay.length, inventory);
+      if (isOverCapacity) {
         const totalPlays = nonCoPlay.reduce((sum, r) => sum + Number(r.plays || 0), 0);
         const totalAmount = nonCoPlay.reduce((sum, r) => sum + Number(r.amount || 0), 0);
         const clients = [...new Set(nonCoPlay.map((r) => r.client))];
         const channel = getChannelById(channelId);
-        let conflictType = 'overlap';
-        if (isCapacityConflict) conflictType = 'disabled';
-        else if (isOverCapacity && !isMultiRecord) conflictType = 'overcapacity';
-        else if (isOverCapacity && isMultiRecord) conflictType = 'both';
         groups.push({
           key,
           channelId,
@@ -1072,7 +1101,7 @@ function App() {
           conflictCount: nonCoPlay.length,
           capacity,
           isEnabled,
-          conflictType
+          conflictType: isEnabled ? 'overcapacity' : 'disabled'
         });
       }
     });
@@ -1115,10 +1144,10 @@ function App() {
     let slotOptions;
     if (filters.channel === '全部') {
       const allSlots = new Set();
-      channels.forEach((ch) => ch.slots.forEach((s) => allSlots.add(s)));
+      channels.forEach((ch) => getEnabledInventorySlots(ch.id, inventory).forEach((s) => allSlots.add(s)));
       slotOptions = Array.from(allSlots);
     } else {
-      slotOptions = getChannelSlots(filters.channel);
+      slotOptions = getEnabledInventorySlots(filters.channel, inventory);
     }
     const map = {};
     slotOptions.forEach((slot) => {
@@ -1148,7 +1177,7 @@ function App() {
         utilization: totalRecords > 0 ? (s.recordCount / totalRecords) * 100 : 0,
       };
     });
-  }, [filteredRecords, isConflicted, filters.channel]);
+  }, [filteredRecords, isConflicted, filters.channel, inventory]);
 
   const last7DaysRevenue = useMemo(() => {
     const baseDate = parseDateKey(today);
@@ -1336,7 +1365,9 @@ function App() {
       slots.forEach((slot, slotIdx) => {
         const key = `${channelId}::${date}::${slot}`;
         const existingRecords = records.filter((r) => r.channelId === channelId && r.date === date && r.slot === slot && !r.coPlay);
-        const hasConflict = existingRecords.length > 0;
+        const usageWithPreview = existingRecords.length + 1;
+        const capacityState = getSlotCapacityState(channelId, slot, usageWithPreview, inventory);
+        const hasConflict = capacityState.isOverCapacity;
         previewRows.push({
           previewId: `p-${dateIdx}-${slotIdx}`,
           client,
@@ -1353,6 +1384,7 @@ function App() {
             client: r.client,
             adName: r.adName,
           })),
+          capacity: capacityState.capacity,
         });
         rowIndex += 1;
       });
@@ -1613,7 +1645,7 @@ function App() {
               <span>投放频道</span>
               <select value={form.channelId || selectedChannel} onChange={(event) => {
                 const newChannelId = event.target.value;
-                const channelSlots = getChannelSlots(newChannelId);
+                const channelSlots = getEnabledInventorySlots(newChannelId, inventory);
                 setForm({ ...form, channelId: newChannelId, slot: channelSlots[0] || form.slot });
               }}>
                 {channels.map((channel) => (
@@ -1636,7 +1668,7 @@ function App() {
                   <textarea value={form[field.key] || ''} onChange={(event) => setForm({ ...form, [field.key]: event.target.value })} placeholder={field.placeholder} />
                 ) : field.key === 'slot' ? (
                   <select value={form[field.key] || ''} onChange={(event) => setForm({ ...form, [field.key]: event.target.value })}>
-                    {getChannelSlots(form.channelId || selectedChannel).map((option) => <option key={option}>{option}</option>)}
+                    {getEnabledInventorySlots(form.channelId || selectedChannel, inventory).map((option) => <option key={option}>{option}</option>)}
                   </select>
                 ) : field.type === 'select' ? (
                   <select value={form[field.key] || ''} onChange={(event) => setForm({ ...form, [field.key]: event.target.value })}>
@@ -1715,7 +1747,7 @@ function App() {
                         <div className="reslot-inline">
                           <select value={reslotValue} onChange={(e) => setReslotValue(e.target.value)}>
                             <option value="">选择新时段</option>
-                            {appConfig.fields.find((f) => f.key === 'slot')?.options
+                            {getEnabledInventorySlots(item.channelId || selectedChannel, inventory)
                               .filter((opt) => opt !== item.slot)
                               .map((opt) => <option key={opt}>{opt}</option>)}
                           </select>
@@ -1879,7 +1911,6 @@ function App() {
                 value={batchForm.channelId}
                 onChange={(e) => {
                   const newChannelId = e.target.value;
-                  const channelSlots = getChannelSlots(newChannelId);
                   setBatchForm({ ...batchForm, channelId: newChannelId, slots: [] });
                 }}
               >
@@ -1961,7 +1992,7 @@ function App() {
             <label className="batch-label">
               <span>投放时段（可多选）</span>
               <div className="slot-chips">
-                {getChannelSlots(batchForm.channelId).map((slot) => (
+                {getEnabledInventorySlots(batchForm.channelId, inventory).map((slot) => (
                   <button
                     key={slot}
                     type="button"
@@ -2218,7 +2249,7 @@ function App() {
                             <div className="reslot-inline">
                               <select value={reslotValue} onChange={(e) => setReslotValue(e.target.value)}>
                                 <option value="">选择新时段</option>
-                                {appConfig.fields.find((f) => f.key === 'slot')?.options
+                                {getEnabledInventorySlots(group.channelId, inventory)
                                   .filter((opt) => opt !== group.slot)
                                   .map((opt) => <option key={opt}>{opt}</option>)}
                               </select>
@@ -2989,7 +3020,15 @@ function App() {
                   <div className="slot-groups">
                     {Object.entries(slots).map(([slot, slotItems]) => {
                       const nonCoPlayItems = slotItems.filter((r) => !r.coPlay);
-                      const hasConflict = nonCoPlayItems.length > 1;
+                      const usageByChannel = nonCoPlayItems.reduce((acc, item) => {
+                        const channelId = item.channelId || 'channel-news';
+                        acc[channelId] = (acc[channelId] || 0) + 1;
+                        return acc;
+                      }, {});
+                      const conflictCount = Object.entries(usageByChannel).reduce((total, [channelId, count]) => {
+                        return total + (getSlotCapacityState(channelId, slot, count, inventory).isOverCapacity ? count : 0);
+                      }, 0);
+                      const hasConflict = conflictCount > 0;
                       const hasCoPlay = slotItems.some((r) => r.coPlay);
                       return (
                         <div key={slot} className={`slot-group ${hasConflict ? 'slot-conflict' : ''} ${hasCoPlay ? 'slot-coplay' : ''}`}>
@@ -2997,7 +3036,7 @@ function App() {
                             <span className="slot-name">{slot}</span>
                             {hasConflict && (
                               <span className="slot-conflict-tag">
-                                <AlertTriangle size={12} />{nonCoPlayItems.length}条冲突
+                                <AlertTriangle size={12} />{conflictCount}条冲突
                               </span>
                             )}
                             {hasCoPlay && (
@@ -3067,7 +3106,7 @@ function App() {
                     <div className="reslot-inline">
                       <select value={reslotValue} onChange={(e) => setReslotValue(e.target.value)}>
                         <option value="">选择新时段</option>
-                        {appConfig.fields.find((f) => f.key === 'slot')?.options
+                        {getEnabledInventorySlots(selected.channelId || selectedChannel, inventory)
                           .filter((opt) => opt !== selected.slot)
                           .map((opt) => <option key={opt}>{opt}</option>)}
                       </select>
