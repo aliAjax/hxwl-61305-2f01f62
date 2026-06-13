@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Radio, Plus, Search, Trash2, RotateCcw, CheckCircle2, AlertTriangle, ClipboardList, CalendarDays, Users, UserPlus, Phone, Pencil, X, ChevronLeft, ChevronRight, Calendar, FileUp, XCircle, ShieldAlert, Clock, Layers, MinusCircle, Zap, CalendarRange, SkipForward, Flag } from 'lucide-react';
+import { Radio, Plus, Search, Trash2, RotateCcw, CheckCircle2, AlertTriangle, ClipboardList, CalendarDays, Users, UserPlus, Phone, Pencil, X, ChevronLeft, ChevronRight, Calendar, FileUp, XCircle, ShieldAlert, Clock, Layers, MinusCircle, Zap, CalendarRange, SkipForward, Flag, PlayCircle, ListVideo, TrendingUp, AlertCircle, Mic2, CircleDot, CircleDashed, CircleAlert } from 'lucide-react';
 import './App.css';
 
 const appConfig = {
@@ -314,6 +314,16 @@ function App() {
   const [batchPreview, setBatchPreview] = useState(null);
   const [batchConflictMode, setBatchConflictMode] = useState('skip');
 
+  const [broadcastModalOpen, setBroadcastModalOpen] = useState(false);
+  const [broadcastTarget, setBroadcastTarget] = useState(null);
+  const [broadcastForm, setBroadcastForm] = useState({
+    broadcastTime: '',
+    plays: '1',
+    remark: ''
+  });
+  const [broadcastFilter, setBroadcastFilter] = useState({ query: '', status: '全部' });
+  const [broadcastDetail, setBroadcastDetail] = useState(null);
+
   function persist(next) {
     setRecords(next);
     localStorage.setItem(appConfig.storage, JSON.stringify(next));
@@ -322,6 +332,126 @@ function App() {
   function persistCustomers(next) {
     setCustomers(next);
     localStorage.setItem(customerStorage, JSON.stringify(next));
+  }
+
+  function getActualPlays(item) {
+    if (!item.broadcastLogs || item.broadcastLogs.length === 0) return 0;
+    return item.broadcastLogs.reduce((sum, log) => sum + Number(log.plays || 0), 0);
+  }
+
+  function getBroadcastStatus(item) {
+    const planned = Number(item.plays || 0);
+    const actual = getActualPlays(item);
+    if (actual === 0) return '未开始';
+    if (actual < planned) return '未完成';
+    if (actual === planned) return '已完成';
+    return '超播';
+  }
+
+  function getBroadcastStatusClass(status) {
+    const map = {
+      '未开始': 'status-a',
+      '未完成': 'status-b',
+      '已完成': 'status-c',
+      '超播': 'status-over'
+    };
+    return map[status] || 'status-a';
+  }
+
+  function openBroadcastModal(item) {
+    setBroadcastTarget(item);
+    const now = new Date();
+    const timeStr = now.toISOString().slice(0, 16);
+    setBroadcastForm({ broadcastTime: timeStr, plays: '1', remark: '' });
+    setBroadcastModalOpen(true);
+  }
+
+  function closeBroadcastModal() {
+    setBroadcastModalOpen(false);
+    setBroadcastTarget(null);
+    setBroadcastForm({ broadcastTime: '', plays: '1', remark: '' });
+  }
+
+  function addBroadcastLog(event) {
+    event.preventDefault();
+    if (!broadcastTarget || !broadcastForm.broadcastTime) return;
+
+    const plays = Number(broadcastForm.plays || 0);
+    if (plays <= 0) {
+      alert('播出次数必须大于0');
+      return;
+    }
+
+    const newLog = {
+      id: uid(),
+      broadcastTime: broadcastForm.broadcastTime,
+      plays: String(plays),
+      remark: broadcastForm.remark || '',
+      createdAt: new Date().toISOString()
+    };
+
+    const next = records.map((item) => {
+      if (item.id !== broadcastTarget.id) return item;
+
+      const updatedLogs = [...(item.broadcastLogs || []), newLog];
+      const actualPlays = updatedLogs.reduce((sum, log) => sum + Number(log.plays || 0), 0);
+      const plannedPlays = Number(item.plays || 0);
+      const wasCompleted = item.status === '已播完';
+      const nowCompleted = actualPlays >= plannedPlays;
+
+      let updatedItem = {
+        ...item,
+        broadcastLogs: updatedLogs
+      };
+
+      if (nowCompleted && !wasCompleted) {
+        updatedItem.status = '已播完';
+        updatedItem.timeline = [
+          ...(item.timeline || []),
+          { status: '已播完', at: today, by: '系统自动（播出达标）' }
+        ];
+      }
+
+      return updatedItem;
+    });
+
+    persist(next);
+    const updatedTarget = next.find((item) => item.id === broadcastTarget.id);
+    if (selected?.id === broadcastTarget.id) setSelected(updatedTarget);
+    if (broadcastDetail?.id === broadcastTarget.id) setBroadcastDetail(updatedTarget);
+    closeBroadcastModal();
+  }
+
+  function removeBroadcastLog(itemId, logId) {
+    const next = records.map((item) => {
+      if (item.id !== itemId) return item;
+
+      const updatedLogs = (item.broadcastLogs || []).filter((log) => log.id !== logId);
+      const actualPlays = updatedLogs.reduce((sum, log) => sum + Number(log.plays || 0), 0);
+      const plannedPlays = Number(item.plays || 0);
+      const wasCompleted = item.status === '已播完';
+      const stillCompleted = actualPlays >= plannedPlays;
+
+      let updatedItem = {
+        ...item,
+        broadcastLogs: updatedLogs
+      };
+
+      if (!stillCompleted && wasCompleted) {
+        updatedItem.status = '已排期';
+        updatedItem.timeline = [
+          ...(item.timeline || []),
+          { status: '已排期', at: today, by: '系统自动（播出不足）' }
+        ];
+      }
+
+      return updatedItem;
+    });
+
+    persist(next);
+    const updatedItem = next.find((item) => item.id === itemId);
+    if (selected?.id === itemId) setSelected(updatedItem);
+    if (broadcastDetail?.id === itemId) setBroadcastDetail(updatedItem);
   }
 
   function addCustomer(event) {
@@ -1517,6 +1647,166 @@ function App() {
         </div>
       </section>
 
+      <section className="broadcast-section">
+        <div className="panel broadcast-list-panel">
+          <div className="panel-title">
+            <Mic2 size={18} />
+            <h2>播出回填</h2>
+            <span className="broadcast-hint">记录每条已排期广告的实际播出情况</span>
+          </div>
+          <div className="toolbar">
+            <div className="search">
+              <Search size={16} />
+              <input
+                value={broadcastFilter.query}
+                onChange={(e) => setBroadcastFilter({ ...broadcastFilter, query: e.target.value })}
+                placeholder="搜索客户/广告名称"
+              />
+            </div>
+            <select
+              value={broadcastFilter.status}
+              onChange={(e) => setBroadcastFilter({ ...broadcastFilter, status: e.target.value })}
+            >
+              <option>全部</option>
+              <option>未开始</option>
+              <option>未完成</option>
+              <option>已完成</option>
+              <option>超播</option>
+            </select>
+          </div>
+          <div className="broadcast-records">
+            {records
+              .filter((item) => !broadcastFilter.query || `${item.client}${item.adName}`.includes(broadcastFilter.query))
+              .filter((item) => {
+                if (broadcastFilter.status === '全部') return true;
+                return getBroadcastStatus(item) === broadcastFilter.status;
+              })
+              .filter((item) => item.status !== '待确认')
+              .sort((a, b) => {
+                const statusOrder = { '未开始': 0, '未完成': 1, '超播': 2, '已完成': 3 };
+                const orderA = statusOrder[getBroadcastStatus(a)] ?? 9;
+                const orderB = statusOrder[getBroadcastStatus(b)] ?? 9;
+                if (orderA !== orderB) return orderA - orderB;
+                return (b.date || '').localeCompare(a.date || '');
+              })
+              .map((item) => {
+                const actual = getActualPlays(item);
+                const planned = Number(item.plays || 0);
+                const status = getBroadcastStatus(item);
+                const progress = planned > 0 ? Math.min(100, (actual / planned) * 100) : 0;
+                return (
+                  <article
+                    className="broadcast-record"
+                    key={item.id}
+                    onClick={() => setBroadcastDetail(item)}
+                  >
+                    <div className="broadcast-record-head">
+                      <div>
+                        <h3>{item.adName}</h3>
+                        <p>{item.client} · {item.date} · {item.slot}</p>
+                      </div>
+                      <span className={'status ' + getBroadcastStatusClass(status)}>{status}</span>
+                    </div>
+                    <div className="broadcast-progress">
+                      <div className="progress-bar">
+                        <div
+                          className="progress-fill"
+                          style={{
+                            width: `${progress}%`,
+                            background: status === '超播' ? '#dc2626' : status === '已完成' ? '#059669' : 'var(--accent)'
+                          }}
+                        />
+                      </div>
+                      <span className="progress-text">
+                        {actual} / {planned} 次
+                        {status === '超播' && <em>（超{actual - planned}次）</em>}
+                      </span>
+                    </div>
+                    <div className="broadcast-record-actions" onClick={(e) => e.stopPropagation()}>
+                      <button type="button" className="primary compact" onClick={() => openBroadcastModal(item)}>
+                        <PlayCircle size={14} />登记播出
+                      </button>
+                      <span className="broadcast-log-count">
+                        共{(item.broadcastLogs || []).length}条记录
+                      </span>
+                    </div>
+                  </article>
+                );
+              })}
+            {records.filter((item) => item.status !== '待确认').length === 0 && (
+              <p className="empty">暂无已排期的广告记录。</p>
+            )}
+          </div>
+        </div>
+
+        <aside className="panel broadcast-detail-panel">
+          <div className="panel-title">
+            <ListVideo size={18} />
+            <h2>播出详情</h2>
+          </div>
+          {broadcastDetail ? (
+            <div className="broadcast-detail">
+              <h3>{broadcastDetail.adName}</h3>
+              <p>{broadcastDetail.client} · {broadcastDetail.date} · {broadcastDetail.slot}</p>
+              <div className="broadcast-detail-summary">
+                <div className="bds-item">
+                  <span className="bds-label">计划播放</span>
+                  <span className="bds-value">{broadcastDetail.plays}次</span>
+                </div>
+                <div className="bds-item">
+                  <span className="bds-label">实际播放</span>
+                  <span className="bds-value">{getActualPlays(broadcastDetail)}次</span>
+                </div>
+                <div className="bds-item">
+                  <span className="bds-label">播出状态</span>
+                  <span className={'status ' + getBroadcastStatusClass(getBroadcastStatus(broadcastDetail))}>
+                    {getBroadcastStatus(broadcastDetail)}
+                  </span>
+                </div>
+              </div>
+              <button className="primary" type="button" onClick={() => openBroadcastModal(broadcastDetail)}>
+                <Plus size={16} />登记播出
+              </button>
+              <div className="detail-section-title">播出记录</div>
+              {broadcastDetail.broadcastLogs && broadcastDetail.broadcastLogs.length > 0 ? (
+                <div className="broadcast-log-list">
+                  {[...broadcastDetail.broadcastLogs]
+                    .sort((a, b) => new Date(b.broadcastTime) - new Date(a.broadcastTime))
+                    .map((log, index) => (
+                      <div className="broadcast-log-item" key={log.id}>
+                        <div className="log-dot" />
+                        <div className="log-content">
+                          <div className="log-head">
+                            <span className="log-time">{log.broadcastTime.replace('T', ' ')}</span>
+                            <span className="log-plays">{log.plays}次</span>
+                          </div>
+                          {log.remark && <p className="log-remark">{log.remark}</p>}
+                        </div>
+                        <button
+                          className="ghost-danger compact"
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (confirm('确定要删除这条播出记录吗？')) {
+                              removeBroadcastLog(broadcastDetail.id, log.id);
+                            }
+                          }}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    ))}
+                </div>
+              ) : (
+                <p className="empty">暂无播出记录，点击上方按钮开始登记。</p>
+              )}
+            </div>
+          ) : (
+            <p className="empty">点击左侧任意广告查看播出详情和记录。</p>
+          )}
+        </aside>
+      </section>
+
       <section className="calendar-section">
         <div className="panel calendar-panel">
           <div className="calendar-header">
@@ -1716,6 +2006,64 @@ function App() {
                   {selected.temps.map((value, index) => <i key={index} style={{ height: Math.max(10, 56 + Number(value) * 8) }} title={String(value)} />)}
                 </div>
               )}
+
+              {selected.status !== '待确认' && (
+                <div className="detail-broadcast-section">
+                  <div className="detail-section-title">播出进度</div>
+                  <div className="detail-broadcast-summary">
+                    <div className="dbs-item">
+                      <span className="dbs-label">计划</span>
+                      <span className="dbs-value">{selected.plays}次</span>
+                    </div>
+                    <div className="dbs-item">
+                      <span className="dbs-label">实际</span>
+                      <span className="dbs-value">{getActualPlays(selected)}次</span>
+                    </div>
+                    <div className="dbs-item">
+                      <span className="dbs-label">状态</span>
+                      <span className={'status ' + getBroadcastStatusClass(getBroadcastStatus(selected))}>
+                        {getBroadcastStatus(selected)}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="detail-progress">
+                    <div className="progress-bar">
+                      <div
+                        className="progress-fill"
+                        style={{
+                          width: `${Number(selected.plays) > 0 ? Math.min(100, (getActualPlays(selected) / Number(selected.plays)) * 100) : 0}%`,
+                          background: getBroadcastStatus(selected) === '超播' ? '#dc2626' : getBroadcastStatus(selected) === '已完成' ? '#059669' : 'var(--accent)'
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <button type="button" className="primary compact" onClick={() => openBroadcastModal(selected)}>
+                    <PlayCircle size={14} />登记播出
+                  </button>
+
+                  {(selected.broadcastLogs || []).length > 0 && (
+                    <>
+                      <div className="detail-section-title">播出记录</div>
+                      <div className="detail-broadcast-logs">
+                        {[...selected.broadcastLogs]
+                          .sort((a, b) => new Date(b.broadcastTime) - new Date(a.broadcastTime))
+                          .slice(0, 5)
+                          .map((log) => (
+                            <div className="detail-log-item" key={log.id}>
+                              <span className="detail-log-time">{log.broadcastTime.replace('T', ' ')}</span>
+                              <span className="detail-log-plays">{log.plays}次</span>
+                              {log.remark && <span className="detail-log-remark">{log.remark}</span>}
+                            </div>
+                          ))}
+                        {(selected.broadcastLogs || []).length > 5 && (
+                          <span className="detail-log-more">共{(selected.broadcastLogs || []).length}条记录，请到播出回填模块查看详情</span>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
               <div className="timeline">
                 {(selected.timeline || []).map((step, index) => (
                   <span key={index}>{step.at} · {step.status} · {step.by}</span>
@@ -1727,6 +2075,71 @@ function App() {
           )}
         </aside>
       </section>
+
+      {broadcastModalOpen && broadcastTarget && (
+        <div className="modal-overlay" onClick={closeBroadcastModal}>
+          <div className="modal-content broadcast-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="panel-title" style={{ marginBottom: 0 }}>
+                <PlayCircle size={18} />
+                <h2>登记播出</h2>
+              </div>
+              <button type="button" className="modal-close" onClick={closeBroadcastModal}>
+                <X size={20} />
+              </button>
+            </div>
+            <div className="modal-body">
+              <div className="broadcast-modal-info">
+                <p><strong>广告：</strong>{broadcastTarget.adName}</p>
+                <p><strong>客户：</strong>{broadcastTarget.client}</p>
+                <p><strong>计划播放：</strong>{broadcastTarget.plays}次</p>
+                <p><strong>已播放：</strong>{getActualPlays(broadcastTarget)}次</p>
+              </div>
+              <form onSubmit={addBroadcastLog}>
+                <div className="form-grid">
+                  <label>
+                    <span>播出时间</span>
+                    <input
+                      type="datetime-local"
+                      value={broadcastForm.broadcastTime}
+                      onChange={(e) => setBroadcastForm({ ...broadcastForm, broadcastTime: e.target.value })}
+                      required
+                    />
+                  </label>
+                  <label>
+                    <span>播出次数</span>
+                    <input
+                      type="number"
+                      min="1"
+                      value={broadcastForm.plays}
+                      onChange={(e) => setBroadcastForm({ ...broadcastForm, plays: e.target.value })}
+                      placeholder="1"
+                      required
+                    />
+                  </label>
+                  <label className="wide">
+                    <span>备注</span>
+                    <textarea
+                      value={broadcastForm.remark}
+                      onChange={(e) => setBroadcastForm({ ...broadcastForm, remark: e.target.value })}
+                      placeholder="可选，填写播出说明或特殊情况"
+                      rows={3}
+                    />
+                  </label>
+                </div>
+                <div className="modal-actions">
+                  <button type="button" className="cancel-btn" onClick={closeBroadcastModal}>
+                    取消
+                  </button>
+                  <button type="submit" className="primary">
+                    <CheckCircle2 size={16} />确认登记
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
