@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Radio, Plus, Search, Trash2, RotateCcw, CheckCircle2, AlertTriangle, ClipboardList, CalendarDays, Users, UserPlus, Phone, Pencil, X, ChevronLeft, ChevronRight, Calendar, FileUp, XCircle, ShieldAlert, Clock, Layers, MinusCircle, Zap, CalendarRange, SkipForward, Flag, PlayCircle, ListVideo, Mic2 } from 'lucide-react';
+import { Radio, Plus, Search, Trash2, RotateCcw, CheckCircle2, AlertTriangle, ClipboardList, CalendarDays, Users, UserPlus, Phone, Pencil, X, ChevronLeft, ChevronRight, Calendar, FileUp, XCircle, ShieldAlert, Clock, Layers, MinusCircle, Zap, CalendarRange, SkipForward, Flag, PlayCircle, ListVideo, Mic2, BarChart3, TrendingUp, PieChart, Inbox } from 'lucide-react';
 import './App.css';
 
 const appConfig = {
@@ -323,6 +323,7 @@ function App() {
   });
   const [broadcastFilter, setBroadcastFilter] = useState({ query: '', status: '全部' });
   const [broadcastDetail, setBroadcastDetail] = useState(null);
+  const [analyticsTab, setAnalyticsTab] = useState('ranking');
 
   function persist(next) {
     setRecords(next);
@@ -691,6 +692,95 @@ function App() {
     conflictGroups.forEach((g) => g.items.forEach((item) => set.add(item.id)));
     return set;
   }, [conflictGroups]);
+
+  const clientRankingStats = useMemo(() => {
+    const map = {};
+    filteredRecords.forEach((item) => {
+      const client = item.client || '未命名客户';
+      if (!map[client]) {
+        map[client] = {
+          client,
+          amount: 0,
+          plays: 0,
+          pendingCount: 0,
+          conflictCount: 0,
+          recordCount: 0,
+        };
+      }
+      map[client].amount += Number(item.amount || 0);
+      map[client].plays += Number(item.plays || 0);
+      map[client].recordCount += 1;
+      if (item.status === '待确认') map[client].pendingCount += 1;
+      if (isConflicted.has(item.id)) map[client].conflictCount += 1;
+    });
+    const list = Object.values(map);
+    list.sort((a, b) => b.amount - a.amount);
+    return list;
+  }, [filteredRecords, isConflicted]);
+
+  const slotUtilizationStats = useMemo(() => {
+    const slotOptions = appConfig.fields.find((f) => f.key === 'slot')?.options || [];
+    const map = {};
+    slotOptions.forEach((slot) => {
+      map[slot] = { slot, recordCount: 0, plays: 0, amount: 0, clients: new Set(), conflictCount: 0 };
+    });
+    filteredRecords.forEach((item) => {
+      const slot = item.slot;
+      if (!map[slot]) {
+        map[slot] = { slot, recordCount: 0, plays: 0, amount: 0, clients: new Set(), conflictCount: 0 };
+      }
+      map[slot].recordCount += 1;
+      map[slot].plays += Number(item.plays || 0);
+      map[slot].amount += Number(item.amount || 0);
+      if (item.client) map[slot].clients.add(item.client);
+      if (isConflicted.has(item.id)) map[slot].conflictCount += 1;
+    });
+    const totalRecords = filteredRecords.length;
+    return slotOptions.map((slot) => {
+      const s = map[slot];
+      return {
+        slot,
+        recordCount: s.recordCount,
+        plays: s.plays,
+        amount: s.amount,
+        clientCount: s.clients.size,
+        conflictCount: s.conflictCount,
+        utilization: totalRecords > 0 ? (s.recordCount / totalRecords) * 100 : 0,
+      };
+    });
+  }, [filteredRecords, isConflicted]);
+
+  const last7DaysRevenue = useMemo(() => {
+    const baseDate = new Date(today);
+    const days = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(baseDate);
+      d.setDate(baseDate.getDate() - i);
+      const dateStr = d.toISOString().slice(0, 10);
+      days.push({
+        date: dateStr,
+        dayName: ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][d.getDay()],
+        dayNum: d.getDate(),
+        amount: 0,
+        recordCount: 0,
+        plays: 0,
+      });
+    }
+    filteredRecords.forEach((item) => {
+      if (!item.date) return;
+      const day = days.find((d) => d.date === item.date);
+      if (day) {
+        day.amount += Number(item.amount || 0);
+        day.recordCount += 1;
+        day.plays += Number(item.plays || 0);
+      }
+    });
+    return days;
+  }, [filteredRecords, today]);
+
+  const analyticsHasData = useMemo(() => {
+    return filteredRecords.length > 0;
+  }, [filteredRecords]);
 
   const metrics = [
     { label: "排期数", value: records.length },
@@ -1864,6 +1954,203 @@ function App() {
               <span>已筛选：{selectedDate}</span>
               <button type="button" onClick={() => setSelectedDate(null)}>清除筛选</button>
             </div>
+          )}
+        </div>
+      </section>
+
+      <section className="analytics-section">
+        <div className="panel analytics-panel">
+          <div className="panel-title">
+            <BarChart3 size={18} />
+            <h2>经营分析</h2>
+            <span className="analytics-hint">基于当前筛选结果实时统计</span>
+          </div>
+
+          <div className="analytics-tabs">
+            <button
+              type="button"
+              className={`analytics-tab ${analyticsTab === 'ranking' ? 'active' : ''}`}
+              onClick={() => setAnalyticsTab('ranking')}
+            >
+              <Users size={16} />
+              客户维度排行
+            </button>
+            <button
+              type="button"
+              className={`analytics-tab ${analyticsTab === 'utilization' ? 'active' : ''}`}
+              onClick={() => setAnalyticsTab('utilization')}
+            >
+              <PieChart size={16} />
+              时段利用率
+            </button>
+            <button
+              type="button"
+              className={`analytics-tab ${analyticsTab === 'trend' ? 'active' : ''}`}
+              onClick={() => setAnalyticsTab('trend')}
+            >
+              <TrendingUp size={16} />
+              近7天收入趋势
+            </button>
+          </div>
+
+          {!analyticsHasData ? (
+            <div className="analytics-empty">
+              <Inbox size={48} />
+              <h3>暂无经营数据</h3>
+              <p>当前筛选条件下没有排期记录，请调整筛选或添加新的排期。</p>
+            </div>
+          ) : (
+            <>
+              {analyticsTab === 'ranking' && (
+                <div className="ranking-view">
+                  <div className="ranking-summary">
+                    <div className="ranking-summary-item">
+                      <span className="rs-label">客户总数</span>
+                      <span className="rs-value">{clientRankingStats.length}</span>
+                    </div>
+                    <div className="ranking-summary-item">
+                      <span className="rs-label">合同总额</span>
+                      <span className="rs-value amount">{money(clientRankingStats.reduce((s, c) => s + c.amount, 0))}</span>
+                    </div>
+                    <div className="ranking-summary-item">
+                      <span className="rs-label">总播放次</span>
+                      <span className="rs-value">{clientRankingStats.reduce((s, c) => s + c.plays, 0)}次</span>
+                    </div>
+                    <div className="ranking-summary-item">
+                      <span className="rs-label">待确认</span>
+                      <span className="rs-value pending">{clientRankingStats.reduce((s, c) => s + c.pendingCount, 0)}条</span>
+                    </div>
+                    <div className="ranking-summary-item">
+                      <span className="rs-label">冲突数</span>
+                      <span className="rs-value conflict">{clientRankingStats.reduce((s, c) => s + c.conflictCount, 0)}条</span>
+                    </div>
+                  </div>
+                  <div className="ranking-list">
+                    {clientRankingStats.map((client, index) => {
+                      const maxAmount = clientRankingStats[0]?.amount || 1;
+                      const barWidth = (client.amount / maxAmount) * 100;
+                      return (
+                        <div key={client.client} className="ranking-row">
+                          <div className="ranking-rank">
+                            <span className={`rank-badge ${index < 3 ? 'rank-top' : ''}`}>{index + 1}</span>
+                          </div>
+                          <div className="ranking-info">
+                            <div className="ranking-name-row">
+                              <strong className="ranking-client">{client.client}</strong>
+                              <span className="ranking-amount">{money(client.amount)}</span>
+                            </div>
+                            <div className="ranking-bar">
+                              <div className="ranking-bar-fill" style={{ width: `${barWidth}%` }} />
+                            </div>
+                            <div className="ranking-meta">
+                              <span>{client.recordCount}条排期</span>
+                              <span>播放{client.plays}次</span>
+                              {client.pendingCount > 0 && <span className="meta-pending">{client.pendingCount}待确认</span>}
+                              {client.conflictCount > 0 && <span className="meta-conflict"><AlertTriangle size={12} />{client.conflictCount}冲突</span>}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {analyticsTab === 'utilization' && (
+                <div className="utilization-view">
+                  <div className="utilization-list">
+                    {slotUtilizationStats.map((slot) => (
+                      <div key={slot.slot} className="utilization-row">
+                        <div className="utilization-slot">
+                          <strong>{slot.slot}</strong>
+                          <span className="utilization-percent">{slot.utilization.toFixed(1)}%</span>
+                        </div>
+                        <div className="utilization-bar">
+                          <div
+                            className="utilization-bar-fill"
+                            style={{
+                              width: `${Math.min(100, slot.utilization)}%`,
+                              background: slot.conflictCount > 0 ? '#f59e0b' : 'var(--accent)',
+                            }}
+                          />
+                        </div>
+                        <div className="utilization-meta">
+                          <div className="utilization-meta-item">
+                            <span className="um-label">排期</span>
+                            <span className="um-value">{slot.recordCount}条</span>
+                          </div>
+                          <div className="utilization-meta-item">
+                            <span className="um-label">播放</span>
+                            <span className="um-value">{slot.plays}次</span>
+                          </div>
+                          <div className="utilization-meta-item">
+                            <span className="um-label">客户</span>
+                            <span className="um-value">{slot.clientCount}个</span>
+                          </div>
+                          <div className="utilization-meta-item">
+                            <span className="um-label">合同额</span>
+                            <span className="um-value amount">{money(slot.amount)}</span>
+                          </div>
+                          {slot.conflictCount > 0 && (
+                            <div className="utilization-meta-item">
+                              <span className="um-label">冲突</span>
+                              <span className="um-value conflict">{slot.conflictCount}条</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {analyticsTab === 'trend' && (
+                <div className="trend-view">
+                  <div className="trend-summary">
+                    <div className="trend-summary-item">
+                      <span className="ts-label">7天总收入</span>
+                      <span className="ts-value amount">{money(last7DaysRevenue.reduce((s, d) => s + d.amount, 0))}</span>
+                    </div>
+                    <div className="trend-summary-item">
+                      <span className="ts-label">日均收入</span>
+                      <span className="ts-value amount">{money(last7DaysRevenue.reduce((s, d) => s + d.amount, 0) / 7)}</span>
+                    </div>
+                    <div className="trend-summary-item">
+                      <span className="ts-label">7天总排期</span>
+                      <span className="ts-value">{last7DaysRevenue.reduce((s, d) => s + d.recordCount, 0)}条</span>
+                    </div>
+                    <div className="trend-summary-item">
+                      <span className="ts-label">7天总播放</span>
+                      <span className="ts-value">{last7DaysRevenue.reduce((s, d) => s + d.plays, 0)}次</span>
+                    </div>
+                  </div>
+                  <div className="trend-chart">
+                    {(() => {
+                      const maxAmount = Math.max(...last7DaysRevenue.map((d) => d.amount), 1);
+                      return last7DaysRevenue.map((day) => {
+                        const height = (day.amount / maxAmount) * 100;
+                        return (
+                          <div key={day.date} className="trend-bar-col">
+                            <div className="trend-bar-value">{day.amount > 0 ? money(day.amount) : ''}</div>
+                            <div className="trend-bar-wrap">
+                              <div
+                                className="trend-bar-fill"
+                                style={{ height: `${Math.max(height, day.amount > 0 ? 4 : 0)}%` }}
+                              />
+                            </div>
+                            <div className="trend-bar-meta">
+                              <span className="trend-day-name">{day.dayName}</span>
+                              <span className="trend-day-num">{day.dayNum}</span>
+                              <span className="trend-bar-count">{day.recordCount}条</span>
+                            </div>
+                          </div>
+                        );
+                      });
+                    })()}
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
       </section>
