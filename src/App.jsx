@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Radio, Plus, Search, Trash2, RotateCcw, CheckCircle2, AlertTriangle, ClipboardList, CalendarDays, Users, UserPlus, Phone, Pencil, X, ChevronLeft, ChevronRight, Calendar, FileUp, XCircle, ShieldAlert, Clock, Layers, MinusCircle, Zap, CalendarRange, SkipForward, Flag, PlayCircle, ListVideo, Mic2, BarChart3, TrendingUp, PieChart, Inbox, FileText, Package, History, Calculator, ArrowRightLeft, Sparkles, Eye, ThumbsUp, Ban, Info } from 'lucide-react';
+import { Radio, Plus, Search, Trash2, RotateCcw, CheckCircle2, AlertTriangle, ClipboardList, CalendarDays, Users, UserPlus, Phone, Pencil, X, ChevronLeft, ChevronRight, Calendar, FileUp, XCircle, ShieldAlert, Clock, Layers, MinusCircle, Zap, CalendarRange, SkipForward, Flag, PlayCircle, ListVideo, Mic2, BarChart3, TrendingUp, PieChart, Inbox, FileText, Package, History, Calculator, ArrowRightLeft, Sparkles, Eye, ThumbsUp, Ban, Info, Download, Upload, Database } from 'lucide-react';
 import './App.css';
 
 const appConfig = {
@@ -273,6 +273,97 @@ const materialStorage = 'hxwl-61305-ad-materials';
 const materialStatuses = ['待制作', '制作中', '审核中', '已交付', '已退回'];
 
 const defaultMaterials = [];
+
+const DATA_BACKUP_VERSION = '1.0.0';
+
+const backupStorageKeys = {
+  records: appConfig.storage,
+  customers: customerStorage,
+  inventory: inventoryStorage,
+  materials: materialStorage,
+  proposals: 'hxwl-61305-proposal-plans',
+};
+
+function createBackupData() {
+  const backup = {
+    version: DATA_BACKUP_VERSION,
+    exportedAt: new Date().toISOString(),
+    data: {},
+  };
+  Object.entries(backupStorageKeys).forEach(([key, storageKey]) => {
+    const raw = localStorage.getItem(storageKey);
+    if (raw) {
+      try {
+        backup.data[key] = JSON.parse(raw);
+      } catch {
+        backup.data[key] = key === 'inventory' ? defaultInventory : [];
+      }
+    } else {
+      backup.data[key] = key === 'inventory' ? defaultInventory : [];
+    }
+  });
+  return backup;
+}
+
+function downloadBackup(backup) {
+  const jsonStr = JSON.stringify(backup, null, 2);
+  const blob = new Blob([jsonStr], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const dateStr = new Date().toISOString().slice(0, 10);
+  a.href = url;
+  a.download = `电台广告排期备份_${dateStr}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function parseBackupFile(text) {
+  try {
+    const parsed = JSON.parse(text);
+    if (!parsed || !parsed.version || !parsed.data) {
+      return { valid: false, error: '无效的备份文件格式' };
+    }
+    return { valid: true, data: parsed };
+  } catch {
+    return { valid: false, error: '备份文件解析失败，请确认文件格式正确' };
+  }
+}
+
+function computeRestorePreview(backupData, currentState) {
+  const preview = {};
+  Object.entries(backupStorageKeys).forEach(([key]) => {
+    const incoming = backupData.data[key] || (key === 'inventory' ? {} : []);
+    const current = currentState[key];
+    if (key === 'inventory') {
+      const incomingChannels = Object.keys(incoming);
+      const currentChannels = Object.keys(current || {});
+      const overlapping = incomingChannels.filter((c) => currentChannels.includes(c));
+      preview[key] = {
+        label: '频道库存',
+        incomingCount: incomingChannels.length,
+        currentCount: currentChannels.length,
+        overlappingCount: overlapping.length,
+        newOnlyCount: incomingChannels.length - overlapping.length,
+      };
+    } else {
+      const incomingList = Array.isArray(incoming) ? incoming : [];
+      const currentList = Array.isArray(current) ? current : [];
+      const currentIds = new Set(currentList.map((item) => item.id));
+      const overlapping = incomingList.filter((item) => currentIds.has(item.id));
+      const newOnly = incomingList.filter((item) => !currentIds.has(item.id));
+      preview[key] = {
+        label: key === 'records' ? '广告排期' : key === 'customers' ? '客户档案' : key === 'materials' ? '素材记录' : '排期方案',
+        incomingCount: incomingList.length,
+        currentCount: currentList.length,
+        overlappingCount: overlapping.length,
+        newOnlyCount: newOnly.length,
+      };
+    }
+  });
+  return preview;
+}
 
 const proposalStorage = 'hxwl-61305-proposal-plans';
 
@@ -721,6 +812,15 @@ function App() {
   const [selectedProposalPlan, setSelectedProposalPlan] = useState(null);
   const [proposalStep, setProposalStep] = useState('form');
   const [proposalConflictMode, setProposalConflictMode] = useState('skip');
+
+  const [backupModalOpen, setBackupModalOpen] = useState(false);
+  const [restoreModalOpen, setRestoreModalOpen] = useState(false);
+  const [restoreFileContent, setRestoreFileContent] = useState(null);
+  const [restoreParsedData, setRestoreParsedData] = useState(null);
+  const [restorePreview, setRestorePreview] = useState(null);
+  const [restoreMode, setRestoreMode] = useState('overwrite');
+  const [restoreError, setRestoreError] = useState(null);
+  const [restoreSuccess, setRestoreSuccess] = useState(null);
 
   useEffect(() => {
     if (filters.channel !== '全部') {
@@ -2362,6 +2462,121 @@ function App() {
     setMoveChannelValue({ channelId: '', slot: '' });
   }
 
+  function handleExportBackup() {
+    const backup = createBackupData();
+    downloadBackup(backup);
+  }
+
+  function openRestoreModal() {
+    setRestoreFileContent(null);
+    setRestoreParsedData(null);
+    setRestorePreview(null);
+    setRestoreMode('overwrite');
+    setRestoreError(null);
+    setRestoreSuccess(null);
+    setRestoreModalOpen(true);
+  }
+
+  function closeRestoreModal() {
+    setRestoreModalOpen(false);
+    setRestoreFileContent(null);
+    setRestoreParsedData(null);
+    setRestorePreview(null);
+    setRestoreError(null);
+    setRestoreSuccess(null);
+  }
+
+  function handleRestoreFileSelect(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setRestoreError(null);
+    setRestoreSuccess(null);
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = e.target?.result;
+      if (typeof text !== 'string') {
+        setRestoreError('无法读取文件内容');
+        return;
+      }
+      setRestoreFileContent(text);
+      const parsed = parseBackupFile(text);
+      if (!parsed.valid) {
+        setRestoreError(parsed.error);
+        setRestoreParsedData(null);
+        setRestorePreview(null);
+        return;
+      }
+      setRestoreParsedData(parsed.data);
+      const preview = computeRestorePreview(parsed.data, {
+        records,
+        customers,
+        inventory,
+        materials,
+        proposals,
+      });
+      setRestorePreview(preview);
+    };
+    reader.onerror = () => {
+      setRestoreError('文件读取失败');
+    };
+    reader.readAsText(file);
+  }
+
+  function mergeArrayData(current, incoming) {
+    const currentIds = new Set(current.map((item) => item.id));
+    const newItems = incoming.filter((item) => !currentIds.has(item.id));
+    return [...current, ...newItems];
+  }
+
+  function mergeInventoryData(current, incoming) {
+    const result = { ...current };
+    Object.entries(incoming).forEach(([channelId, channelData]) => {
+      if (!result[channelId]) {
+        result[channelId] = channelData;
+      }
+    });
+    return result;
+  }
+
+  function applyRestore() {
+    if (!restoreParsedData) return;
+    const data = restoreParsedData.data;
+
+    if (restoreMode === 'overwrite') {
+      const newRecords = Array.isArray(data.records) ? data.records : [];
+      const newCustomers = Array.isArray(data.customers) ? data.customers : [];
+      const newInventory = data.inventory && typeof data.inventory === 'object' ? data.inventory : defaultInventory;
+      const newMaterials = Array.isArray(data.materials) ? data.materials : [];
+      const newProposals = Array.isArray(data.proposals) ? data.proposals : [];
+
+      persist(newRecords);
+      persistCustomers(newCustomers);
+      handlePersistInventory(newInventory);
+      persistMaterials(newMaterials);
+      persistProposals(newProposals);
+
+      setSelected(null);
+      setSelectedDate(null);
+      setBroadcastDetail(null);
+      setMaterialDetail(null);
+      setRestoreSuccess('数据已全部覆盖导入，页面状态已刷新');
+    } else {
+      const mergedRecords = mergeArrayData(records, Array.isArray(data.records) ? data.records : []);
+      const mergedCustomers = mergeArrayData(customers, Array.isArray(data.customers) ? data.customers : []);
+      const mergedInventory = mergeInventoryData(inventory, data.inventory && typeof data.inventory === 'object' ? data.inventory : {});
+      const mergedMaterials = mergeArrayData(materials, Array.isArray(data.materials) ? data.materials : []);
+      const mergedProposals = mergeArrayData(proposals, Array.isArray(data.proposals) ? data.proposals : []);
+
+      persist(mergedRecords);
+      persistCustomers(mergedCustomers);
+      handlePersistInventory(mergedInventory);
+      persistMaterials(mergedMaterials);
+      persistProposals(mergedProposals);
+
+      setRestoreSuccess('数据已合并导入，新增记录已添加，页面状态已刷新');
+    }
+  }
+
   function resolveByReslot(recordId) {
     if (moveChannelTarget === recordId) {
       setMoveChannelTarget(null);
@@ -2412,9 +2627,17 @@ function App() {
           <h1>{appConfig.title}</h1>
           <p>{appConfig.subtitle}</p>
         </div>
-        <div className="port-card">
-          <span>Local Port</span>
-          <strong>{appConfig.port}</strong>
+        <div className="hero-actions">
+          <button type="button" className="ghost compact" onClick={handleExportBackup}>
+            <Download size={16} />导出备份
+          </button>
+          <button type="button" className="ghost compact" onClick={openRestoreModal}>
+            <Upload size={16} />恢复数据
+          </button>
+          <div className="port-card">
+            <span>Local Port</span>
+            <strong>{appConfig.port}</strong>
+          </div>
         </div>
       </section>
 
@@ -5366,6 +5589,134 @@ function App() {
                 <button type="button" className="primary" onClick={closeInventoryModal}>
                   <CheckCircle2 size={16} />完成
                 </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {restoreModalOpen && (
+        <div className="modal-overlay" onClick={closeRestoreModal}>
+          <div className="modal-content restore-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="panel-title" style={{ marginBottom: 0 }}>
+                <Database size={18} />
+                <h2>数据恢复</h2>
+              </div>
+              <button type="button" className="modal-close" onClick={closeRestoreModal}>
+                <X size={20} />
+              </button>
+            </div>
+            <div className="modal-body">
+              {!restoreFileContent && (
+                <div className="restore-upload-area">
+                  <Upload size={36} />
+                  <p>选择之前导出的备份文件（.json格式）</p>
+                  <label className="primary" style={{ cursor: 'pointer' }}>
+                    <input
+                      type="file"
+                      accept=".json,application/json"
+                      onChange={handleRestoreFileSelect}
+                      style={{ display: 'none' }}
+                    />
+                    <Upload size={16} />选择备份文件
+                  </label>
+                </div>
+              )}
+
+              {restoreError && (
+                <div className="import-alert import-alert-error">
+                  <XCircle size={16} />
+                  <span>{restoreError}</span>
+                </div>
+              )}
+
+              {restoreSuccess && (
+                <div className="import-alert" style={{ background: '#dcfce7', borderColor: '#16a34a', color: '#166534' }}>
+                  <CheckCircle2 size={16} />
+                  <span>{restoreSuccess}</span>
+                </div>
+              )}
+
+              {restorePreview && restoreParsedData && (
+                <div className="restore-preview">
+                  <div className="restore-file-info">
+                    <span>备份版本：{restoreParsedData.version}</span>
+                    <span>导出时间：{new Date(restoreParsedData.exportedAt).toLocaleString('zh-CN')}</span>
+                  </div>
+
+                  <div className="restore-preview-title">
+                    <Info size={16} />
+                    <span>数据恢复预览</span>
+                  </div>
+
+                  <table className="restore-preview-table">
+                    <thead>
+                      <tr>
+                        <th>数据类型</th>
+                        <th>备份中数量</th>
+                        <th>当前数量</th>
+                        <th>新增</th>
+                        <th>覆盖/重叠</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {Object.entries(restorePreview).map(([key, info]) => (
+                        <tr key={key}>
+                          <td>{info.label}</td>
+                          <td>{info.incomingCount}</td>
+                          <td>{info.currentCount}</td>
+                          <td className="restore-new">{info.newOnlyCount}</td>
+                          <td className="restore-overlap">{info.overlappingCount}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+
+                  <div className="restore-mode-section">
+                    <div className="restore-mode-title">请选择恢复方式：</div>
+                    <div className="restore-mode-options">
+                      <label className={`restore-mode-option ${restoreMode === 'overwrite' ? 'active' : ''}`}>
+                        <input
+                          type="radio"
+                          checked={restoreMode === 'overwrite'}
+                          onChange={() => setRestoreMode('overwrite')}
+                        />
+                        <div>
+                          <strong>覆盖当前数据</strong>
+                          <span>将使用备份中的数据完全替换当前所有数据，原有数据将被清除</span>
+                        </div>
+                      </label>
+                      <label className={`restore-mode-option ${restoreMode === 'merge' ? 'active' : ''}`}>
+                        <input
+                          type="radio"
+                          checked={restoreMode === 'merge'}
+                          onChange={() => setRestoreMode('merge')}
+                        />
+                        <div>
+                          <strong>合并导入</strong>
+                          <span>仅添加备份中有但当前没有的新记录，保留当前已有数据不变</span>
+                        </div>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="modal-actions">
+                <button type="button" className="cancel-btn" onClick={closeRestoreModal}>
+                  {restoreSuccess ? '关闭' : '取消'}
+                </button>
+                {restorePreview && !restoreSuccess && (
+                  <button
+                    type="button"
+                    className="primary"
+                    onClick={applyRestore}
+                  >
+                    <CheckCircle2 size={16} />
+                    确认{restoreMode === 'overwrite' ? '覆盖' : '合并'}恢复
+                  </button>
+                )}
               </div>
             </div>
           </div>
