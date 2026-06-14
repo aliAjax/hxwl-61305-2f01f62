@@ -566,7 +566,7 @@ function App() {
     statusRemark: ''
   });
   const [editingMaterial, setEditingMaterial] = useState(null);
-  const [materialFilter, setMaterialFilter] = useState({ query: '', status: '全部', showUndeliveredOnly: false });
+  const [materialFilter, setMaterialFilter] = useState({ query: '', status: '全部', showUndeliveredOnly: false, showUpcomingUndeliveredOnly: false });
   const [materialDetail, setMaterialDetail] = useState(null);
 
   const [proposalForm, setProposalForm] = useState({
@@ -1302,6 +1302,13 @@ function App() {
         const material = getMaterialByScheduleId(item.id);
         return isMaterialUndeliveredWarning(item, material);
       })
+      .filter((item) => {
+        if (!materialFilter.showUpcomingUndeliveredOnly) return true;
+        if (item.status !== '已排期') return false;
+        if (!inNextDays(item.date, 3)) return false;
+        const material = getMaterialByScheduleId(item.id);
+        return !isMaterialDelivered(material);
+      })
       .sort((a, b) => {
         const matA = getMaterialByScheduleId(a.id);
         const matB = getMaterialByScheduleId(b.id);
@@ -1320,11 +1327,18 @@ function App() {
       return r.status === '已排期' && isMaterialDelivered(mat);
     }).length;
     const undeliveredCount = scheduledCount - deliveredCount;
+    const upcomingUndeliveredCount = records.filter((r) => {
+      if (r.status !== '已排期') return false;
+      if (!inNextDays(r.date, 3)) return false;
+      const mat = getMaterialByScheduleId(r.id);
+      return !isMaterialDelivered(mat);
+    }).length;
     return [
       { label: '已排期广告', value: scheduledCount },
       { label: '已绑定素材', value: withMaterial },
       { label: '已交付', value: deliveredCount },
-      { label: '待交付', value: undeliveredCount }
+      { label: '待交付', value: undeliveredCount },
+      { label: '临近投放未交付', value: upcomingUndeliveredCount, highlight: upcomingUndeliveredCount > 0 }
     ];
   }, [records, materials]);
 
@@ -3892,7 +3906,7 @@ function App() {
 
           <div className="metrics material-metrics">
             {materialMetrics.map((metric) => (
-              <article className="metric" key={metric.label}>
+              <article className={`metric ${metric.highlight ? 'metric-highlight' : ''}`} key={metric.label}>
                 <span>{metric.label}</span>
                 <strong>{metric.value}</strong>
               </article>
@@ -3919,9 +3933,17 @@ function App() {
               <input
                 type="checkbox"
                 checked={materialFilter.showUndeliveredOnly}
-                onChange={(e) => setMaterialFilter({ ...materialFilter, showUndeliveredOnly: e.target.checked })}
+                onChange={(e) => setMaterialFilter({ ...materialFilter, showUndeliveredOnly: e.target.checked, showUpcomingUndeliveredOnly: e.target.checked ? false : materialFilter.showUpcomingUndeliveredOnly })}
               />
               <span>仅显示待交付</span>
+            </label>
+            <label className="filter-checkbox">
+              <input
+                type="checkbox"
+                checked={materialFilter.showUpcomingUndeliveredOnly}
+                onChange={(e) => setMaterialFilter({ ...materialFilter, showUpcomingUndeliveredOnly: e.target.checked, showUndeliveredOnly: e.target.checked ? false : materialFilter.showUndeliveredOnly })}
+              />
+              <span>临近投放未交付（3天内）</span>
             </label>
           </div>
 

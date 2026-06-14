@@ -2485,7 +2485,7 @@ textarea { min-height: 76px; resize: vertical; }
 
 .material-metrics {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 12px;
   margin-bottom: 16px;
 }
@@ -2497,6 +2497,26 @@ textarea { min-height: 76px; resize: vertical; }
 
 .material-metrics .metric strong {
   color: var(--accent);
+}
+
+.material-metrics .metric.metric-highlight {
+  background: rgba(220, 38, 38, 0.08);
+  border: 1px solid rgba(220, 38, 38, 0.25);
+  animation: pulse-highlight 2s ease-in-out infinite;
+}
+
+.material-metrics .metric.metric-highlight span,
+.material-metrics .metric.metric-highlight strong {
+  color: #dc2626;
+}
+
+@keyframes pulse-highlight {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.2);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.1);
+  }
 }
 
 .material-records {
