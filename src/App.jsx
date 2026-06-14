@@ -566,7 +566,7 @@ function App() {
     statusRemark: ''
   });
   const [editingMaterial, setEditingMaterial] = useState(null);
-  const [materialFilter, setMaterialFilter] = useState({ query: '', status: '全部', showUndeliveredOnly: false, showUpcomingUndeliveredOnly: false });
+  const [materialFilter, setMaterialFilter] = useState({ query: '', status: '全部', showUndeliveredOnly: false, showUpcomingUndeliveredOnly: true });
   const [materialDetail, setMaterialDetail] = useState(null);
 
   const [proposalForm, setProposalForm] = useState({
