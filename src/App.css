@@ -1212,6 +1212,33 @@ textarea { min-height: 76px; resize: vertical; }
   font-weight: 500;
 }
 
+.slot-play-row.auto input[type="number"] {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  color: #64748b;
+}
+
+.slot-play-row.auto input[type="number"]::placeholder {
+  color: #94a3b8;
+  font-style: italic;
+}
+
+.slot-play-row.custom input[type="number"] {
+  background: #fff7ed;
+  border-color: #fdba74;
+  color: #c2410c;
+  font-weight: 600;
+}
+
+.slot-play-auto-tag {
+  font-size: 11px;
+  padding: 2px 8px;
+  background: #e2e8f0;
+  color: #475569;
+  border-radius: 999px;
+  font-weight: 500;
+}
+
 .batch-meta-row {
   display: grid;
   grid-template-columns: 1fr 1fr;

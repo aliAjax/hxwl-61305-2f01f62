@@ -1473,6 +1473,17 @@ function App() {
     return Array.from({ length: totalRecords }, (_, index) => String(base + (index < remainder ? 1 : 0)));
   }
 
+  function getEffectiveSlotPlays(slot, slots, slotPlays, playsPerDay) {
+    const customVal = slotPlays && slotPlays[slot];
+    if (customVal != null && customVal !== '' && Number(customVal) > 0) {
+      return String(Math.max(1, Math.round(Number(customVal))));
+    }
+    const total = playsPerDay && Number(playsPerDay) > 0 ? Number(playsPerDay) : slots.length;
+    return slots.length > 0
+      ? String(Math.max(1, Math.round(total / slots.length)))
+      : '1';
+  }
+
   function generateBatchPreview() {
     const { client, adName, channelId, startDate, endDate, weekdays, slots, playsPerDay, slotPlays, totalAmount, status } = batchForm;
 
@@ -1487,14 +1498,6 @@ function App() {
       return;
     }
 
-    const fallbackPlays = playsPerDay && Number(playsPerDay) > 0
-      ? String(Math.max(1, Math.round(Number(playsPerDay) / slots.length)))
-      : '1';
-    const getSlotPlays = (slot) => {
-      const custom = slotPlays[slot];
-      return custom && Number(custom) > 0 ? String(Math.max(1, Math.round(Number(custom)))) : fallbackPlays;
-    };
-
     const totalRecords = dates.length * slots.length;
     const amountValues = distributeTotalAmount(totalAmount, totalRecords);
 
@@ -1507,7 +1510,7 @@ function App() {
         const usageWithPreview = existingRecords.length + 1;
         const capacityState = getSlotCapacityState(channelId, slot, usageWithPreview, inventory);
         const hasConflict = capacityState.isOverCapacity;
-        const slotPlayCount = getSlotPlays(slot);
+        const slotPlayCount = getEffectiveSlotPlays(slot, slots, slotPlays, playsPerDay);
         previewRows.push({
           previewId: `p-${dateIdx}-${slotIdx}`,
           client,
@@ -1550,7 +1553,7 @@ function App() {
       slots,
       perRecordAmount: minAmount === maxAmount ? money(minAmount) : `${money(minAmount)}-${money(maxAmount)}`,
       perRecordPlays: minPlays === maxPlays ? String(minPlays) : `${minPlays}-${maxPlays}`,
-      slotPlaysMap: slots.reduce((acc, s) => { acc[s] = getSlotPlays(s); return acc; }, {}),
+      slotPlaysMap: slots.reduce((acc, s) => { acc[s] = getEffectiveSlotPlays(s, slots, slotPlays, playsPerDay); return acc; }, {}),
     });
   }
 
@@ -1623,12 +1626,6 @@ function App() {
       const nextSlotPlays = { ...prev.slotPlays };
       if (exists) {
         delete nextSlotPlays[slot];
-      } else {
-        const totalPlays = Number(prev.playsPerDay) || 0;
-        const defaultPlay = totalPlays > 0 && nextSlots.length > 0
-          ? String(Math.max(1, Math.round(totalPlays / nextSlots.length)))
-          : '1';
-        nextSlotPlays[slot] = defaultPlay;
       }
       return {
         ...prev,
@@ -1646,18 +1643,10 @@ function App() {
       const nextSlots = customer.preferredSlot && !batchForm.slots.includes(customer.preferredSlot)
         ? [...batchForm.slots, customer.preferredSlot]
         : batchForm.slots;
-      const nextSlotPlays = { ...batchForm.slotPlays };
-      if (customer.preferredSlot && !batchForm.slots.includes(customer.preferredSlot)) {
-        const totalPlays = Number(batchForm.playsPerDay) || 0;
-        nextSlotPlays[customer.preferredSlot] = totalPlays > 0 && nextSlots.length > 0
-          ? String(Math.max(1, Math.round(totalPlays / nextSlots.length)))
-          : '1';
-      }
       setBatchForm({
         ...batchForm,
         client: customer.name,
         slots: nextSlots,
-        slotPlays: nextSlotPlays,
       });
     }
   }
@@ -2705,28 +2694,39 @@ function App() {
                 <div className="slot-plays-header">
                   <span>按时段设置播放次数</span>
                   <span className="slot-plays-total">
-                    日均合计：{batchForm.slots.reduce((sum, s) => sum + (Number(batchForm.slotPlays[s]) || 0), 0)}次
+                    日均合计：{batchForm.slots.reduce((sum, s) => sum + Number(getEffectiveSlotPlays(s, batchForm.slots, batchForm.slotPlays, batchForm.playsPerDay)), 0)}次
                   </span>
                 </div>
-                {batchForm.slots.map((slot) => (
-                  <div key={slot} className="slot-play-row">
-                    <span className="slot-play-label">{slot}</span>
-                    <input
-                      type="number"
-                      min="1"
-                      value={batchForm.slotPlays[slot] || ''}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setBatchForm((prev) => ({
-                          ...prev,
-                          slotPlays: { ...prev.slotPlays, [slot]: val },
-                        }));
-                      }}
-                      placeholder="自动"
-                    />
-                    <span className="slot-play-unit">次/天</span>
-                  </div>
-                ))}
+                {batchForm.slots.map((slot) => {
+                  const customVal = batchForm.slotPlays[slot];
+                  const hasCustom = customVal != null && customVal !== '' && Number(customVal) > 0;
+                  const effectiveVal = getEffectiveSlotPlays(slot, batchForm.slots, batchForm.slotPlays, batchForm.playsPerDay);
+                  return (
+                    <div key={slot} className={`slot-play-row ${hasCustom ? 'custom' : 'auto'}`}>
+                      <span className="slot-play-label">{slot}</span>
+                      <input
+                        type="number"
+                        min="1"
+                        value={hasCustom ? customVal : ''}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setBatchForm((prev) => {
+                            const nextSlotPlays = { ...prev.slotPlays };
+                            if (val === '' || val == null) {
+                              delete nextSlotPlays[slot];
+                            } else {
+                              nextSlotPlays[slot] = val;
+                            }
+                            return { ...prev, slotPlays: nextSlotPlays };
+                          });
+                        }}
+                        placeholder={`自动 ${effectiveVal}`}
+                      />
+                      <span className="slot-play-unit">次/天</span>
+                      {!hasCustom && <span className="slot-play-auto-tag">自动</span>}
+                    </div>
+                  );
+                })}
               </div>
             )}
 
@@ -2741,7 +2741,7 @@ function App() {
                     const val = e.target.value;
                     setBatchForm((prev) => {
                       const totalPlays = Number(val) || 0;
-                      const nextSlotPlays = { ...prev.slotPlays };
+                      const nextSlotPlays = {};
                       if (prev.slots.length > 0 && totalPlays > 0) {
                         const perSlot = String(Math.max(1, Math.round(totalPlays / prev.slots.length)));
                         prev.slots.forEach((s) => {
