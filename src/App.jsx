@@ -537,6 +537,7 @@ function App() {
     weekdays: [1, 2, 3, 4, 5],
     slots: [],
     playsPerDay: '4',
+    slotPlays: {},
     totalAmount: '',
     status: '待确认',
   });
@@ -598,7 +599,7 @@ function App() {
         channelId: filters.channel,
         slot: channelSlots.includes(prev.slot) ? prev.slot : channelSlots[0] || '',
       }));
-      setBatchForm((prev) => ({ ...prev, channelId: filters.channel, slots: [] }));
+      setBatchForm((prev) => ({ ...prev, channelId: filters.channel, slots: [], slotPlays: {} }));
     }
   }, [filters.channel, inventory]);
 
@@ -612,7 +613,12 @@ function App() {
     setBatchForm((prev) => {
       const channelSlots = getEnabledInventorySlots(prev.channelId, inventory);
       const nextSlots = prev.slots.filter((slot) => channelSlots.includes(slot));
-      return nextSlots.length === prev.slots.length ? prev : { ...prev, slots: nextSlots };
+      if (nextSlots.length === prev.slots.length) return prev;
+      const nextSlotPlays = { ...prev.slotPlays };
+      prev.slots.forEach((s) => {
+        if (!nextSlots.includes(s)) delete nextSlotPlays[s];
+      });
+      return { ...prev, slots: nextSlots, slotPlays: nextSlotPlays };
     });
   }, [inventory, selectedChannel]);
 
@@ -1468,7 +1474,7 @@ function App() {
   }
 
   function generateBatchPreview() {
-    const { client, adName, channelId, startDate, endDate, weekdays, slots, playsPerDay, totalAmount, status } = batchForm;
+    const { client, adName, channelId, startDate, endDate, weekdays, slots, playsPerDay, slotPlays, totalAmount, status } = batchForm;
 
     if (!client.trim() || !adName.trim() || !startDate || !endDate || slots.length === 0) {
       alert('请填写客户、广告名称、日期范围并选择至少一个时段');
@@ -1481,11 +1487,16 @@ function App() {
       return;
     }
 
-    const totalRecords = dates.length * slots.length;
-    const amountValues = distributeTotalAmount(totalAmount, totalRecords);
-    const perRecordPlays = playsPerDay && Number(playsPerDay) > 0
+    const fallbackPlays = playsPerDay && Number(playsPerDay) > 0
       ? String(Math.max(1, Math.round(Number(playsPerDay) / slots.length)))
       : '1';
+    const getSlotPlays = (slot) => {
+      const custom = slotPlays[slot];
+      return custom && Number(custom) > 0 ? String(Math.max(1, Math.round(Number(custom)))) : fallbackPlays;
+    };
+
+    const totalRecords = dates.length * slots.length;
+    const amountValues = distributeTotalAmount(totalAmount, totalRecords);
 
     const previewRows = [];
     let rowIndex = 0;
@@ -1496,6 +1507,7 @@ function App() {
         const usageWithPreview = existingRecords.length + 1;
         const capacityState = getSlotCapacityState(channelId, slot, usageWithPreview, inventory);
         const hasConflict = capacityState.isOverCapacity;
+        const slotPlayCount = getSlotPlays(slot);
         previewRows.push({
           previewId: `p-${dateIdx}-${slotIdx}`,
           client,
@@ -1503,7 +1515,7 @@ function App() {
           channelId,
           date,
           slot,
-          plays: perRecordPlays,
+          plays: slotPlayCount,
           amount: amountValues[rowIndex] || '0',
           status,
           hasConflict,
@@ -1523,6 +1535,9 @@ function App() {
     const amountNumbers = previewRows.map((r) => Number(r.amount || 0));
     const minAmount = Math.min(...amountNumbers);
     const maxAmount = Math.max(...amountNumbers);
+    const playsNumbers = previewRows.map((r) => Number(r.plays || 0));
+    const minPlays = Math.min(...playsNumbers);
+    const maxPlays = Math.max(...playsNumbers);
 
     setBatchPreview({
       rows: previewRows,
@@ -1530,11 +1545,12 @@ function App() {
       normalCount,
       conflictCount,
       totalAmount: amountNumbers.reduce((sum, value) => sum + value, 0),
-      totalPlays: Number(perRecordPlays) * previewRows.length,
+      totalPlays: playsNumbers.reduce((sum, v) => sum + v, 0),
       dates,
       slots,
       perRecordAmount: minAmount === maxAmount ? money(minAmount) : `${money(minAmount)}-${money(maxAmount)}`,
-      perRecordPlays,
+      perRecordPlays: minPlays === maxPlays ? String(minPlays) : `${minPlays}-${maxPlays}`,
+      slotPlaysMap: slots.reduce((acc, s) => { acc[s] = getSlotPlays(s); return acc; }, {}),
     });
   }
 
@@ -1580,6 +1596,7 @@ function App() {
       weekdays: [1, 2, 3, 4, 5],
       slots: [],
       playsPerDay: '4',
+      slotPlays: {},
       totalAmount: '',
       status: '待确认',
     });
@@ -1600,11 +1617,23 @@ function App() {
   function toggleSlot(slot) {
     setBatchForm((prev) => {
       const exists = prev.slots.includes(slot);
+      const nextSlots = exists
+        ? prev.slots.filter((s) => s !== slot)
+        : [...prev.slots, slot];
+      const nextSlotPlays = { ...prev.slotPlays };
+      if (exists) {
+        delete nextSlotPlays[slot];
+      } else {
+        const totalPlays = Number(prev.playsPerDay) || 0;
+        const defaultPlay = totalPlays > 0 && nextSlots.length > 0
+          ? String(Math.max(1, Math.round(totalPlays / nextSlots.length)))
+          : '1';
+        nextSlotPlays[slot] = defaultPlay;
+      }
       return {
         ...prev,
-        slots: exists
-          ? prev.slots.filter((s) => s !== slot)
-          : [...prev.slots, slot],
+        slots: nextSlots,
+        slotPlays: nextSlotPlays,
       };
     });
   }
@@ -1614,12 +1643,21 @@ function App() {
     if (!name) return;
     const customer = customers.find((c) => c.name === name);
     if (customer) {
+      const nextSlots = customer.preferredSlot && !batchForm.slots.includes(customer.preferredSlot)
+        ? [...batchForm.slots, customer.preferredSlot]
+        : batchForm.slots;
+      const nextSlotPlays = { ...batchForm.slotPlays };
+      if (customer.preferredSlot && !batchForm.slots.includes(customer.preferredSlot)) {
+        const totalPlays = Number(batchForm.playsPerDay) || 0;
+        nextSlotPlays[customer.preferredSlot] = totalPlays > 0 && nextSlots.length > 0
+          ? String(Math.max(1, Math.round(totalPlays / nextSlots.length)))
+          : '1';
+      }
       setBatchForm({
         ...batchForm,
         client: customer.name,
-        slots: customer.preferredSlot && !batchForm.slots.includes(customer.preferredSlot)
-          ? [...batchForm.slots, customer.preferredSlot]
-          : batchForm.slots,
+        slots: nextSlots,
+        slotPlays: nextSlotPlays,
       });
     }
   }
@@ -2542,7 +2580,7 @@ function App() {
                 value={batchForm.channelId}
                 onChange={(e) => {
                   const newChannelId = e.target.value;
-                  setBatchForm({ ...batchForm, channelId: newChannelId, slots: [] });
+                  setBatchForm({ ...batchForm, channelId: newChannelId, slots: [], slotPlays: {} });
                 }}
               >
                 {channels.map((channel) => (
@@ -2662,17 +2700,60 @@ function App() {
               </div>
             </label>
 
+            {batchForm.slots.length > 0 && (
+              <div className="slot-plays-section">
+                <div className="slot-plays-header">
+                  <span>按时段设置播放次数</span>
+                  <span className="slot-plays-total">
+                    日均合计：{batchForm.slots.reduce((sum, s) => sum + (Number(batchForm.slotPlays[s]) || 0), 0)}次
+                  </span>
+                </div>
+                {batchForm.slots.map((slot) => (
+                  <div key={slot} className="slot-play-row">
+                    <span className="slot-play-label">{slot}</span>
+                    <input
+                      type="number"
+                      min="1"
+                      value={batchForm.slotPlays[slot] || ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setBatchForm((prev) => ({
+                          ...prev,
+                          slotPlays: { ...prev.slotPlays, [slot]: val },
+                        }));
+                      }}
+                      placeholder="自动"
+                    />
+                    <span className="slot-play-unit">次/天</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
             <div className="batch-meta-row">
               <label className="batch-label">
-                <span>每日播放次数</span>
+                <span>每日播放次数（快捷设置）</span>
                 <input
                   type="number"
                   min="1"
                   value={batchForm.playsPerDay}
-                  onChange={(e) => setBatchForm({ ...batchForm, playsPerDay: e.target.value })}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setBatchForm((prev) => {
+                      const totalPlays = Number(val) || 0;
+                      const nextSlotPlays = { ...prev.slotPlays };
+                      if (prev.slots.length > 0 && totalPlays > 0) {
+                        const perSlot = String(Math.max(1, Math.round(totalPlays / prev.slots.length)));
+                        prev.slots.forEach((s) => {
+                          nextSlotPlays[s] = perSlot;
+                        });
+                      }
+                      return { ...prev, playsPerDay: val, slotPlays: nextSlotPlays };
+                    });
+                  }}
                   placeholder="4"
                 />
-                <span className="batch-sub-hint">将平均分配到各时段</span>
+                <span className="batch-sub-hint">修改后将重置各时段为平均分配</span>
               </label>
               <label className="batch-label">
                 <span>合同总额（元）</span>
@@ -2737,7 +2818,11 @@ function App() {
               </div>
               <div className="batch-summary-item">
                 <span className="bs-label">每条播放</span>
-                <span className="bs-value">{batchPreview.perRecordPlays}次</span>
+                <span className="bs-value">
+                  {batchPreview.slotPlaysMap
+                    ? Object.entries(batchPreview.slotPlaysMap).map(([s, p]) => `${s}:${p}次`).join('、')
+                    : `${batchPreview.perRecordPlays}次`}
+                </span>
               </div>
               <div className="batch-summary-item">
                 <span className="bs-label">每条金额</span>
