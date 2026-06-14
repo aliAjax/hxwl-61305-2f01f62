@@ -460,7 +460,7 @@ function App() {
       return updatedItem;
     });
 
-    persist(next);
+    persistRecords(next);
     const updatedTarget = next.find((item) => item.id === broadcastTarget.id);
     if (selected?.id === broadcastTarget.id) setSelected(updatedTarget);
     if (broadcastDetail?.id === broadcastTarget.id) setBroadcastDetail(updatedTarget);
@@ -493,7 +493,7 @@ function App() {
       return updatedItem;
     });
 
-    persist(next);
+    persistRecords(next);
     const updatedItem = next.find((item) => item.id === itemId);
     if (selected?.id === itemId) setSelected(updatedItem);
     if (broadcastDetail?.id === itemId) setBroadcastDetail(updatedItem);
@@ -594,7 +594,7 @@ function App() {
       if (temp > 2) nextRecord.status = '异常';
     }
 
-    persist([nextRecord, ...records]);
+    persistRecords([nextRecord, ...records]);
     const channelSlots = getEnabledInventorySlots(targetChannelId, inventory);
     setForm({ ...appConfig.defaultValues, channelId: targetChannelId, slot: channelSlots[0] || '' });
     setSelected(nextRecord);
@@ -606,19 +606,19 @@ function App() {
       status,
       timeline: [...(item.timeline || []), { status, at: today, by: '操作员' }]
     } : item);
-    persist(next);
+    persistRecords(next);
     if (selected?.id === id) setSelected(next.find((item) => item.id === id));
   }
 
   function removeRecord(id) {
     const next = records.filter((item) => item.id !== id);
-    persist(next);
+    persistRecords(next);
     if (selected?.id === id) setSelected(null);
   }
 
   function duplicateRecord(item) {
     const copied = { ...item, id: uid(), status: appConfig.primaryStatus, timeline: [{ status: appConfig.primaryStatus, at: today, by: '复制' }] };
-    persist([copied, ...records]);
+    persistRecords([copied, ...records]);
     setSelected(copied);
   }
 
@@ -631,7 +631,7 @@ function App() {
       temperature: String(value),
       status: value > 2 ? '异常' : record.status
     } : record);
-    persist(next);
+    persistRecords(next);
     setSelected(next.find((record) => record.id === item.id));
   }
 
@@ -1455,31 +1455,6 @@ function App() {
   const [moveChannelTarget, setMoveChannelTarget] = useState(null);
   const [moveChannelValue, setMoveChannelValue] = useState({ channelId: '', slot: '' });
 
-  function getAvailableMoveTargets(recordId, currentChannelId, currentDate, currentSlot) {
-    const targets = [];
-    channels.forEach((channel) => {
-      if (channel.id === currentChannelId) return;
-      const channelSlots = getEnabledInventorySlots(channel.id, inventory);
-      channelSlots.forEach((slot) => {
-        const usage = records.filter(
-          (r) => r.id !== recordId && r.channelId === channel.id && r.date === currentDate && r.slot === slot && !r.coPlay
-        ).length;
-        const { capacity, isEnabled } = getSlotCapacityState(channel.id, slot, usage, inventory);
-        if (isEnabled && usage < capacity) {
-          targets.push({
-            channelId: channel.id,
-            channelName: channel.name,
-            channelColor: channel.color,
-            slot,
-            usage,
-            capacity
-          });
-        }
-      });
-    });
-    return targets;
-  }
-
   function resolveByMoveChannel(recordId) {
     if (reslotTarget === recordId) {
       setReslotTarget(null);
@@ -1496,7 +1471,7 @@ function App() {
         ? { ...item, channelId: moveChannelValue.channelId, slot: moveChannelValue.slot }
         : item
     );
-    persist(next);
+    persistRecords(next);
     if (selected?.id === moveChannelTarget) setSelected(next.find((item) => item.id === moveChannelTarget));
     setMoveChannelTarget(null);
     setMoveChannelValue({ channelId: '', slot: '' });
@@ -1567,22 +1542,6 @@ function App() {
     reader.readAsText(file);
   }
 
-  function mergeArrayData(current, incoming) {
-    const currentIds = new Set(current.map((item) => item.id));
-    const newItems = incoming.filter((item) => !currentIds.has(item.id));
-    return [...current, ...newItems];
-  }
-
-  function mergeInventoryData(current, incoming) {
-    const result = { ...current };
-    Object.entries(incoming).forEach(([channelId, channelData]) => {
-      if (!result[channelId]) {
-        result[channelId] = channelData;
-      }
-    });
-    return result;
-  }
-
   function applyRestore() {
     if (!restoreParsedData) return;
     const data = restoreParsedData.data;
@@ -1594,7 +1553,7 @@ function App() {
       const newMaterials = Array.isArray(data.materials) ? data.materials : [];
       const newProposals = Array.isArray(data.proposals) ? data.proposals : [];
 
-      persist(newRecords);
+      persistRecords(newRecords);
       persistCustomers(newCustomers);
       handlePersistInventory(newInventory);
       persistMaterials(newMaterials);
@@ -1612,7 +1571,7 @@ function App() {
       const mergedMaterials = mergeArrayData(materials, Array.isArray(data.materials) ? data.materials : []);
       const mergedProposals = mergeArrayData(proposals, Array.isArray(data.proposals) ? data.proposals : []);
 
-      persist(mergedRecords);
+      persistRecords(mergedRecords);
       persistCustomers(mergedCustomers);
       handlePersistInventory(mergedInventory);
       persistMaterials(mergedMaterials);
@@ -1634,7 +1593,7 @@ function App() {
   function confirmReslot() {
     if (!reslotTarget || !reslotValue) return;
     const next = records.map((item) => item.id === reslotTarget ? { ...item, slot: reslotValue } : item);
-    persist(next);
+    persistRecords(next);
     if (selected?.id === reslotTarget) setSelected(next.find((item) => item.id === reslotTarget));
     setReslotTarget(null);
     setReslotValue('');
@@ -1646,13 +1605,13 @@ function App() {
       if (key === groupKey) return { ...item, coPlay: true };
       return item;
     });
-    persist(next);
+    persistRecords(next);
     if (selected) setSelected(next.find((item) => item.id === selected.id));
   }
 
   function resolveByDelete(recordId) {
     const next = records.filter((item) => item.id !== recordId);
-    persist(next);
+    persistRecords(next);
     if (selected?.id === recordId) setSelected(null);
     if (reslotTarget === recordId) {
       setReslotTarget(null);
@@ -1947,7 +1906,7 @@ function App() {
                               onChange={(e) => setMoveChannelValue({ ...moveChannelValue, slot: e.target.value })}
                             >
                               <option value="">选择时段</option>
-                              {getAvailableMoveTargets(item.id, item.channelId, item.date, item.slot)
+                              {getAvailableMoveTargets(item.id, item.channelId, item.date, item.slot, records, inventory)
                                 .filter((t) => t.channelId === moveChannelValue.channelId)
                                 .map((t) => (
                                   <option key={`${t.channelId}-${t.slot}`} value={t.slot}>
@@ -1983,7 +1942,7 @@ function App() {
                           {!item.coPlay && (
                             <button type="button" className="co-play-single-btn compact-action" onClick={() => {
                               const next = records.map((r) => r.id === item.id ? { ...r, coPlay: true } : r);
-                              persist(next);
+                              persistRecords(next);
                               if (selected?.id === item.id) setSelected(next.find((r) => r.id === item.id));
                             }}>
                               <Layers size={14} />可并播
@@ -1996,7 +1955,7 @@ function App() {
                   {item.coPlay && (
                     <button type="button" className="co-play-single-btn compact-action" onClick={() => {
                       const next = records.map((r) => r.id === item.id ? { ...r, coPlay: false } : r);
-                      persist(next);
+                      persistRecords(next);
                       if (selected?.id === item.id) setSelected(next.find((r) => r.id === item.id));
                     }}>
                       <XCircle size={14} />取消并播
@@ -3136,7 +3095,7 @@ function App() {
                                   onChange={(e) => setMoveChannelValue({ ...moveChannelValue, slot: e.target.value })}
                                 >
                                   <option value="">选择目标时段</option>
-                                  {getAvailableMoveTargets(item.id, group.channelId, group.date, group.slot)
+                                  {getAvailableMoveTargets(item.id, group.channelId, group.date, group.slot, records, inventory)
                                     .filter((t) => t.channelId === moveChannelValue.channelId)
                                     .map((t) => (
                                       <option key={`${t.channelId}-${t.slot}`} value={t.slot}>
@@ -3171,7 +3130,7 @@ function App() {
                               </button>
                               <button type="button" className="co-play-single-btn" onClick={() => {
                                 const next = records.map((r) => r.id === item.id ? { ...r, coPlay: true } : r);
-                                persist(next);
+                                persistRecords(next);
                                 if (selected?.id === item.id) setSelected(next.find((r) => r.id === item.id));
                               }}>
                                 <Layers size={14} />标记可并播
@@ -4176,7 +4135,7 @@ function App() {
                           onChange={(e) => setMoveChannelValue({ ...moveChannelValue, slot: e.target.value })}
                         >
                           <option value="">选择目标时段</option>
-                          {getAvailableMoveTargets(selected.id, selected.channelId, selected.date, selected.slot)
+                          {getAvailableMoveTargets(selected.id, selected.channelId, selected.date, selected.slot, records, inventory)
                             .filter((t) => t.channelId === moveChannelValue.channelId)
                             .map((t) => (
                               <option key={`${t.channelId}-${t.slot}`} value={t.slot}>
@@ -4211,7 +4170,7 @@ function App() {
                       </button>
                       <button type="button" className="co-play-single-btn" onClick={() => {
                         const next = records.map((r) => r.id === selected.id ? { ...r, coPlay: true } : r);
-                        persist(next);
+                        persistRecords(next);
                         setSelected(next.find((r) => r.id === selected.id));
                       }}>
                         <Layers size={14} />标记可并播
@@ -4230,7 +4189,7 @@ function App() {
                   <div className="detail-action-btns">
                     <button type="button" className="co-play-single-btn" onClick={() => {
                       const next = records.map((r) => r.id === selected.id ? { ...r, coPlay: false } : r);
-                      persist(next);
+                      persistRecords(next);
                       setSelected(next.find((r) => r.id === selected.id));
                     }}>
                       <XCircle size={14} />取消可并播
