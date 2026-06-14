@@ -1423,6 +1423,45 @@ function App() {
     return days;
   }, [filteredRecords, today]);
 
+  const channelComparisonStats = useMemo(() => {
+    const targetChannels = filters.channel === '全部'
+      ? channels
+      : channels.filter((c) => c.id === filters.channel);
+
+    return targetChannels.map((channel) => {
+      const channelRecords = filteredRecords.filter((r) => r.channelId === channel.id);
+      const recordCount = channelRecords.length;
+      const amount = channelRecords.reduce((sum, r) => sum + Number(r.amount || 0), 0);
+      const plays = channelRecords.reduce((sum, r) => sum + Number(r.plays || 0), 0);
+      const conflictCount = channelRecords.filter((r) => isConflicted.has(r.id)).length;
+      const undeliveredMaterialCount = channelRecords.filter((r) => {
+        const material = getMaterialByScheduleId(r.id);
+        return isMaterialUndeliveredWarning(r, material);
+      }).length;
+
+      return {
+        channelId: channel.id,
+        channelName: channel.name,
+        channelColor: channel.color,
+        recordCount,
+        amount,
+        plays,
+        conflictCount,
+        undeliveredMaterialCount,
+      };
+    });
+  }, [filteredRecords, isConflicted, materials, filters.channel]);
+
+  const channelComparisonTotals = useMemo(() => {
+    return channelComparisonStats.reduce((acc, ch) => ({
+      recordCount: acc.recordCount + ch.recordCount,
+      amount: acc.amount + ch.amount,
+      plays: acc.plays + ch.plays,
+      conflictCount: acc.conflictCount + ch.conflictCount,
+      undeliveredMaterialCount: acc.undeliveredMaterialCount + ch.undeliveredMaterialCount,
+    }), { recordCount: 0, amount: 0, plays: 0, conflictCount: 0, undeliveredMaterialCount: 0 });
+  }, [channelComparisonStats]);
+
   const analyticsHasData = useMemo(() => {
     return filteredRecords.length > 0;
   }, [filteredRecords]);
@@ -4235,6 +4274,14 @@ function App() {
               <TrendingUp size={16} />
               近7天收入趋势
             </button>
+            <button
+              type="button"
+              className={`analytics-tab ${analyticsTab === 'channel' ? 'active' : ''}`}
+              onClick={() => setAnalyticsTab('channel')}
+            >
+              <ArrowRightLeft size={16} />
+              频道收入对比
+            </button>
           </div>
 
           {!analyticsHasData ? (
@@ -4391,6 +4438,89 @@ function App() {
                         );
                       });
                     })()}
+                  </div>
+                </div>
+              )}
+
+              {analyticsTab === 'channel' && (
+                <div className="channel-view">
+                  <div className="channel-summary">
+                    <div className="channel-summary-item">
+                      <span className="cs-label">总排期数</span>
+                      <span className="cs-value">{channelComparisonTotals.recordCount}条</span>
+                    </div>
+                    <div className="channel-summary-item">
+                      <span className="cs-label">总合同额</span>
+                      <span className="cs-value amount">{money(channelComparisonTotals.amount)}</span>
+                    </div>
+                    <div className="channel-summary-item">
+                      <span className="cs-label">总播放次</span>
+                      <span className="cs-value">{channelComparisonTotals.plays}次</span>
+                    </div>
+                    <div className="channel-summary-item">
+                      <span className="cs-label">总冲突数</span>
+                      <span className={`cs-value ${channelComparisonTotals.conflictCount > 0 ? 'conflict' : ''}`}>
+                        {channelComparisonTotals.conflictCount}条
+                      </span>
+                    </div>
+                    <div className="channel-summary-item">
+                      <span className="cs-label">素材未交付</span>
+                      <span className={`cs-value ${channelComparisonTotals.undeliveredMaterialCount > 0 ? 'pending' : ''}`}>
+                        {channelComparisonTotals.undeliveredMaterialCount}条
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="channel-list">
+                    {channelComparisonStats.map((channel) => {
+                      const maxAmount = Math.max(...channelComparisonStats.map((c) => c.amount), 1);
+                      const barWidth = maxAmount > 0 ? (channel.amount / maxAmount) * 100 : 0;
+                      return (
+                        <div key={channel.channelId} className="channel-row">
+                          <div className="channel-header">
+                            <div className="channel-info">
+                              <span className="channel-dot" style={{ background: channel.channelColor }} />
+                              <strong className="channel-name">{channel.channelName}</strong>
+                            </div>
+                            <span className="channel-amount">{money(channel.amount)}</span>
+                          </div>
+
+                          <div className="channel-bar">
+                            <div
+                              className="channel-bar-fill"
+                              style={{ width: `${barWidth}%`, background: channel.channelColor }}
+                            />
+                          </div>
+
+                          <div className="channel-metrics">
+                            <div className="channel-metric">
+                              <span className="cm-label">排期数</span>
+                              <span className="cm-value">{channel.recordCount}</span>
+                            </div>
+                            <div className="channel-metric">
+                              <span className="cm-label">合同额</span>
+                              <span className="cm-value amount">{money(channel.amount)}</span>
+                            </div>
+                            <div className="channel-metric">
+                              <span className="cm-label">播放次数</span>
+                              <span className="cm-value">{channel.plays}</span>
+                            </div>
+                            <div className="channel-metric">
+                              <span className="cm-label">冲突数</span>
+                              <span className={`cm-value ${channel.conflictCount > 0 ? 'conflict' : ''}`}>
+                                {channel.conflictCount}
+                              </span>
+                            </div>
+                            <div className="channel-metric">
+                              <span className="cm-label">素材未交付</span>
+                              <span className={`cm-value ${channel.undeliveredMaterialCount > 0 ? 'pending' : ''}`}>
+                                {channel.undeliveredMaterialCount}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}
