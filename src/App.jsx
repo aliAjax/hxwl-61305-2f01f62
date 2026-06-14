@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Radio, Plus, Search, Trash2, RotateCcw, CheckCircle2, AlertTriangle, ClipboardList, CalendarDays, Users, UserPlus, Phone, Pencil, X, ChevronLeft, ChevronRight, Calendar, FileUp, XCircle, ShieldAlert, Clock, Layers, MinusCircle, Zap, CalendarRange, SkipForward, Flag, PlayCircle, ListVideo, Mic2, BarChart3, TrendingUp, PieChart, Inbox, FileText, Package, History, Calculator, ArrowRightLeft, Sparkles, Eye, ThumbsUp, Ban } from 'lucide-react';
+import { Radio, Plus, Search, Trash2, RotateCcw, CheckCircle2, AlertTriangle, ClipboardList, CalendarDays, Users, UserPlus, Phone, Pencil, X, ChevronLeft, ChevronRight, Calendar, FileUp, XCircle, ShieldAlert, Clock, Layers, MinusCircle, Zap, CalendarRange, SkipForward, Flag, PlayCircle, ListVideo, Mic2, BarChart3, TrendingUp, PieChart, Inbox, FileText, Package, History, Calculator, ArrowRightLeft, Sparkles, Eye, ThumbsUp, Ban, Info } from 'lucide-react';
 import './App.css';
 
 const appConfig = {
@@ -485,13 +485,14 @@ function parseCsv(text) {
   const lines = [];
   const lineErrors = [];
   const chineseCommaWarnings = [];
+  const emptyLines = [];
 
   for (let i = 0; i < rawLines.length; i++) {
     const line = rawLines[i];
     const displayLineNo = i + 1;
 
     if (!line.trim()) {
-      lineErrors.push({ rowIndex: displayLineNo, errors: ['空行已跳过'] });
+      emptyLines.push(displayLineNo);
       continue;
     }
 
@@ -525,6 +526,7 @@ function parseCsv(text) {
       lineErrors,
       chineseCommaWarnings,
       parseErrors: [],
+      emptyLines,
     };
   }
 
@@ -590,6 +592,7 @@ function parseCsv(text) {
     lineErrors,
     chineseCommaWarnings,
     parseErrors,
+    emptyLines,
   };
 }
 
@@ -2760,6 +2763,21 @@ function App() {
               </div>
             )}
 
+            {importResult.emptyLines && importResult.emptyLines.length > 0 && (
+              <div className="import-alert import-alert-info">
+                <Info size={16} />
+                <div>
+                  <span>检测到 {importResult.emptyLines.length} 处空行，已自动忽略</span>
+                  <div className="chinese-comma-list">
+                    <div className="chinese-comma-item">第 {importResult.emptyLines.slice(0, 10).join('、')} 行</div>
+                    {importResult.emptyLines.length > 10 && (
+                      <div className="chinese-comma-more">...另有 {importResult.emptyLines.length - 10} 处</div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
             {importResult.lineErrors && importResult.lineErrors.length > 0 && (
               <div className="import-alert import-alert-error">
                 <XCircle size={16} />
@@ -2847,20 +2865,42 @@ function App() {
             <div className="import-confirm-actions">
               {(() => {
                 const totalRows = importResult.rows.length;
-                const invalidRows = importResult.rows.filter((r) => r._hasParseError || r._missingFields.length > 0).length;
-                const validRows = totalRows - invalidRows;
-                const skipped = (importResult.lineErrors?.length || 0) + invalidRows;
+                const parseErrorRows = importResult.rows.filter((r) => r._hasParseError).length;
+                const missingFieldRows = importResult.rows.filter((r) => !r._hasParseError && r._missingFields.length > 0).length;
+                const validRows = totalRows - parseErrorRows - missingFieldRows;
+                const lineParseErrors = importResult.lineErrors?.length || 0;
+                const skippedErrorRows = lineParseErrors + parseErrorRows;
+                const totalSkipped = skippedErrorRows + missingFieldRows;
+                const emptyCount = importResult.emptyLines?.length || 0;
                 return (
                   <div className="import-summary">
-                    {skipped > 0 && (
-                      <span className="import-skip-info">
-                        将跳过 <strong>{skipped}</strong> 条错误记录，导入 <strong>{validRows}</strong> 条正常记录
-                      </span>
-                    )}
-                    {skipped === 0 && (
+                    {totalSkipped === 0 && emptyCount === 0 && (
                       <span className="import-ok-info">
                         共 <strong>{totalRows}</strong> 条记录可正常导入
                       </span>
+                    )}
+                    {(totalSkipped > 0 || emptyCount > 0) && (
+                      <div className="import-summary-detail">
+                        {validRows > 0 && (
+                          <span className="import-ok-info">可正常导入 <strong>{validRows}</strong> 条</span>
+                        )}
+                        {skippedErrorRows > 0 && (
+                          <span className="import-skip-info">
+                            跳过解析错误 <strong>{skippedErrorRows}</strong> 条
+                            {lineParseErrors > 0 && `（含${lineParseErrors}行无法解析）`}
+                          </span>
+                        )}
+                        {missingFieldRows > 0 && (
+                          <span className="import-warn-info">
+                            跳过缺字段 <strong>{missingFieldRows}</strong> 条
+                          </span>
+                        )}
+                        {emptyCount > 0 && (
+                          <span className="import-info-mini">
+                            忽略空行 {emptyCount} 处
+                          </span>
+                        )}
+                      </div>
                     )}
                   </div>
                 );
