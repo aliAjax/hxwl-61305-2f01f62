@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Radio, Plus, Search, Trash2, RotateCcw, CheckCircle2, AlertTriangle, ClipboardList, CalendarDays, Users, UserPlus, Phone, Pencil, X, ChevronLeft, ChevronRight, Calendar, FileUp, XCircle, ShieldAlert, Clock, Layers, MinusCircle, Zap, CalendarRange, SkipForward, Flag, PlayCircle, ListVideo, Mic2, BarChart3, TrendingUp, PieChart, Inbox, FileText, Package, History } from 'lucide-react';
+import { Radio, Plus, Search, Trash2, RotateCcw, CheckCircle2, AlertTriangle, ClipboardList, CalendarDays, Users, UserPlus, Phone, Pencil, X, ChevronLeft, ChevronRight, Calendar, FileUp, XCircle, ShieldAlert, Clock, Layers, MinusCircle, Zap, CalendarRange, SkipForward, Flag, PlayCircle, ListVideo, Mic2, BarChart3, TrendingUp, PieChart, Inbox, FileText, Package, History, Calculator, ArrowRightLeft, Sparkles, Eye, ThumbsUp, Ban } from 'lucide-react';
 import './App.css';
 
 const appConfig = {
@@ -271,6 +271,41 @@ const materialStatuses = ['待制作', '制作中', '审核中', '已交付', '�
 
 const defaultMaterials = [];
 
+const proposalStorage = 'hxwl-61305-proposal-plans';
+
+const discountStrategies = [
+  { key: 'none', label: '无折扣', description: '按原价计算' },
+  { key: 'percent', label: '百分比折扣', description: '按总价百分比优惠' },
+  { key: 'tiered', label: '阶梯折扣', description: '按播放总量分段计价' },
+  { key: 'earlybird', label: '早鸟折扣', description: '距首播越早折扣越大' },
+];
+
+const tieredRules = [
+  { min: 0, max: 20, rate: 1.0 },
+  { min: 21, max: 50, rate: 0.95 },
+  { min: 51, max: Infinity, rate: 0.90 },
+];
+
+const earlybirdRules = [
+  { minDays: 14, rate: 0.90 },
+  { minDays: 7, rate: 0.95 },
+  { minDays: 0, rate: 1.0 },
+];
+
+const slotPriceTiers = {
+  '07:00-08:00': 'standard',
+  '08:00-09:00': 'premium',
+  '12:00-13:00': 'standard',
+  '18:00-19:00': 'premium',
+  '21:00-22:00': 'standard',
+};
+
+const planTypeLabels = {
+  concentrated: { name: '集中投放方案', desc: '聚焦黄金时段，每日高频播放', color: '#dc2626' },
+  balanced: { name: '均衡投放方案', desc: '均匀分配时段和频次', color: '#2563eb' },
+  spread: { name: '广覆盖方案', desc: '分散时段降低冲突，覆盖更多受众', color: '#059669' },
+};
+
 function loadMaterials() {
   const raw = localStorage.getItem(materialStorage);
   if (raw) {
@@ -283,90 +318,13 @@ function loadMaterials() {
   return defaultMaterials.map((m) => ({ ...m, id: uid() }));
 }
 
-const planStorage = 'hxwl-61305-ad-plan-drafts';
-
-const discountStrategies = [
-  { id: 'none', label: '无折扣', type: 'none', desc: '按原价执行' },
-  { id: 'percent', label: '百分比折扣', type: 'percent', desc: '例如：95折即乘以0.95' },
-  { id: 'fixed', label: '固定金额减免', type: 'fixed', desc: '总金额减去固定数值' },
-  { id: 'long_term', label: '长期客户优惠', type: 'long_term', desc: '基于客户历史合同额自动计算' },
-  { id: 'slot_combo', label: '多时段组合优惠', type: 'slot_combo', desc: '选择2个及以上时段享优惠' },
-  { id: 'bulk_days', label: '批量天数优惠', type: 'bulk_days', desc: '投放天数越多，折扣越大' },
-];
-
-const slotBasePrices = {
-  '07:00-08:00': 800,
-  '08:00-09:00': 1200,
-  '12:00-13:00': 900,
-  '18:00-19:00': 1500,
-  '21:00-22:00': 1000,
-};
-
-function loadPlans() {
-  const raw = localStorage.getItem(planStorage);
+function loadProposals() {
+  const raw = localStorage.getItem(proposalStorage);
   if (raw) {
-    try {
-      return JSON.parse(raw);
-    } catch {
-      return [];
-    }
+    try { return JSON.parse(raw); }
+    catch { return []; }
   }
   return [];
-}
-
-function persistPlans(next) {
-  localStorage.setItem(planStorage, JSON.stringify(next));
-}
-
-function getSlotBasePrice(slotName) {
-  return slotBasePrices[slotName] ?? 1000;
-}
-
-function computeDiscount(baseTotal, strategy, value, context) {
-  const { clientHistoricalAmount = 0, slotCount = 1, totalDays = 1 } = context || {};
-  switch (strategy) {
-    case 'none':
-      return { discounted: baseTotal, discountAmount: 0, desc: '无折扣' };
-    case 'percent': {
-      const pct = Math.min(1, Math.max(0, Number(value) || 1));
-      const discountAmount = Math.round(baseTotal * (1 - pct));
-      return { discounted: baseTotal - discountAmount, discountAmount, desc: `${(pct * 10).toFixed(1)}折` };
-    }
-    case 'fixed': {
-      const fixed = Math.max(0, Number(value) || 0);
-      const discountAmount = Math.min(fixed, baseTotal);
-      return { discounted: Math.max(0, baseTotal - discountAmount), discountAmount, desc: `立减¥${discountAmount}` };
-    }
-    case 'long_term': {
-      let pct = 1;
-      if (clientHistoricalAmount >= 500000) pct = 0.80;
-      else if (clientHistoricalAmount >= 200000) pct = 0.88;
-      else if (clientHistoricalAmount >= 100000) pct = 0.92;
-      else if (clientHistoricalAmount >= 50000) pct = 0.95;
-      else if (clientHistoricalAmount >= 10000) pct = 0.98;
-      const discountAmount = Math.round(baseTotal * (1 - pct));
-      return { discounted: baseTotal - discountAmount, discountAmount, desc: `长期客户${(pct * 10).toFixed(1)}折` };
-    }
-    case 'slot_combo': {
-      let pct = 1;
-      if (slotCount >= 4) pct = 0.88;
-      else if (slotCount >= 3) pct = 0.92;
-      else if (slotCount >= 2) pct = 0.96;
-      const discountAmount = Math.round(baseTotal * (1 - pct));
-      return { discounted: baseTotal - discountAmount, discountAmount, desc: `${slotCount}个时段${(pct * 10).toFixed(1)}折` };
-    }
-    case 'bulk_days': {
-      let pct = 1;
-      if (totalDays >= 30) pct = 0.82;
-      else if (totalDays >= 14) pct = 0.88;
-      else if (totalDays >= 7) pct = 0.93;
-      else if (totalDays >= 3) pct = 0.97;
-      const discountAmount = Math.round(baseTotal * (1 - pct));
-      return { discounted: baseTotal - discountAmount, discountAmount, desc: `${totalDays}天${(pct * 10).toFixed(1)}折` };
-    }
-    default:
-      return { discounted: baseTotal, discountAmount: 0, desc: '无折扣' };
-  }
 }
 
 function localDateKey(date = new Date()) {
@@ -599,7 +557,7 @@ function App() {
   const [materialFilter, setMaterialFilter] = useState({ query: '', status: '全部', showUndeliveredOnly: false });
   const [materialDetail, setMaterialDetail] = useState(null);
 
-  const [planForm, setPlanForm] = useState({
+  const [proposalForm, setProposalForm] = useState({
     client: '',
     adName: '',
     channelId: 'channel-news',
@@ -608,15 +566,15 @@ function App() {
     weekdays: [1, 2, 3, 4, 5],
     slots: [],
     playsPerDay: '4',
+    baseUnitPrice: '',
     discountStrategy: 'none',
     discountValue: '',
     status: '待确认',
   });
-  const [planResults, setPlanResults] = useState(null);
-  const [selectedPlanId, setSelectedPlanId] = useState(null);
-  const [planConflictMode, setPlanConflictMode] = useState('skip');
-  const [planHistory, setPlanHistory] = useState(loadPlans);
-  const [planHistoryOpen, setPlanHistoryOpen] = useState(false);
+  const [proposals, setProposals] = useState(loadProposals);
+  const [proposalPlans, setProposalPlans] = useState(null);
+  const [selectedProposalPlan, setSelectedProposalPlan] = useState(null);
+  const [proposalStep, setProposalStep] = useState('form');
 
   useEffect(() => {
     if (filters.channel !== '全部') {
@@ -1601,6 +1559,339 @@ function App() {
     }
   }
 
+  function persistProposals(next) {
+    setProposals(next);
+    localStorage.setItem(proposalStorage, JSON.stringify(next));
+  }
+
+  function calculateDiscount(totalPlays, baseAmount, strategy, discountValue, firstPlayDate) {
+    const originalAmount = baseAmount * totalPlays;
+    if (strategy === 'none') {
+      return { originalAmount, discountRate: 1, discountAmount: 0, finalAmount: originalAmount };
+    }
+    if (strategy === 'percent') {
+      const pct = Math.min(100, Math.max(0, Number(discountValue || 0)));
+      const discountRate = (100 - pct) / 100;
+      const discountAmount = Math.round(originalAmount * (pct / 100));
+      return { originalAmount, discountRate, discountAmount, finalAmount: originalAmount - discountAmount };
+    }
+    if (strategy === 'tiered') {
+      let finalAmount = 0;
+      let remaining = totalPlays;
+      for (const rule of tieredRules) {
+        if (remaining <= 0) break;
+        const rangeSize = rule.max === Infinity ? remaining : rule.max - rule.min;
+        const applicable = Math.min(remaining, rangeSize);
+        finalAmount += baseAmount * applicable * rule.rate;
+        remaining -= applicable;
+      }
+      const discountAmount = originalAmount - Math.round(finalAmount);
+      const discountRate = originalAmount > 0 ? finalAmount / originalAmount : 1;
+      return { originalAmount, discountRate, discountAmount, finalAmount: Math.round(finalAmount) };
+    }
+    if (strategy === 'earlybird') {
+      if (!firstPlayDate) {
+        return { originalAmount, discountRate: 1, discountAmount: 0, finalAmount: originalAmount };
+      }
+      const firstDate = parseDateKey(firstPlayDate);
+      const nowDate = parseDateKey(today);
+      const daysAhead = Math.floor((firstDate.getTime() - nowDate.getTime()) / 86400000);
+      let rate = 1;
+      for (const rule of earlybirdRules) {
+        if (daysAhead >= rule.minDays) {
+          rate = rule.rate;
+          break;
+        }
+      }
+      const discountAmount = Math.round(originalAmount * (1 - rate));
+      return { originalAmount, discountRate: rate, discountAmount, finalAmount: originalAmount - discountAmount };
+    }
+    return { originalAmount, discountRate: 1, discountAmount: 0, finalAmount: originalAmount };
+  }
+
+  function assessConflictRisk(conflictCount, totalCount) {
+    if (totalCount === 0) return 'low';
+    const ratio = conflictCount / totalCount;
+    if (ratio === 0) return 'low';
+    if (ratio <= 0.3) return 'medium';
+    return 'high';
+  }
+
+  function assessMaterialRisk(firstPlayDate) {
+    if (!firstPlayDate) return 'high';
+    const firstDate = parseDateKey(firstPlayDate);
+    const nowDate = parseDateKey(today);
+    const daysAhead = Math.floor((firstDate.getTime() - nowDate.getTime()) / 86400000);
+    if (daysAhead >= 14) return 'low';
+    if (daysAhead >= 7) return 'medium';
+    return 'high';
+  }
+
+  function riskLevelClass(level) {
+    return { low: 'risk-low', medium: 'risk-medium', high: 'risk-high' }[level] || 'risk-low';
+  }
+
+  function riskLevelLabel(level) {
+    return { low: '低', medium: '中', high: '高' }[level] || '低';
+  }
+
+  function buildPlanRows(channelId, dates, slots, playsPerSlot, client, adName) {
+    const rows = [];
+    let rowIndex = 0;
+    dates.forEach((date, dateIdx) => {
+      slots.forEach((slot, slotIdx) => {
+        const existingRecords = records.filter(
+          (r) => r.channelId === channelId && r.date === date && r.slot === slot && !r.coPlay
+        );
+        const usageWithPlan = existingRecords.length + 1;
+        const capacityState = getSlotCapacityState(channelId, slot, usageWithPlan, inventory);
+        rows.push({
+          previewId: `pp-${dateIdx}-${slotIdx}`,
+          client,
+          adName,
+          channelId,
+          date,
+          slot,
+          plays: String(playsPerSlot),
+          hasConflict: capacityState.isOverCapacity,
+          conflictWith: existingRecords.map((r) => ({ id: r.id, client: r.client, adName: r.adName })),
+          capacity: capacityState.capacity,
+        });
+        rowIndex += 1;
+      });
+    });
+    return rows;
+  }
+
+  function buildPlanSummary(rows, baseUnitPrice, discountStrategy, discountValue, channelId) {
+    const totalCount = rows.length;
+    const conflictCount = rows.filter((r) => r.hasConflict).length;
+    const normalCount = totalCount - conflictCount;
+    const totalPlays = rows.reduce((sum, r) => sum + Number(r.plays || 0), 0);
+    const firstPlayDate = rows.length > 0 ? rows.slice().sort((a, b) => a.date.localeCompare(b.date))[0].date : null;
+
+    const discount = calculateDiscount(totalPlays, Number(baseUnitPrice || 0), discountStrategy, discountValue, firstPlayDate);
+    const perRecordAmount = totalCount > 0 ? Math.round(discount.finalAmount / totalCount) : 0;
+    const rowsWithAmount = rows.map((r, idx) => ({
+      ...r,
+      amount: String(perRecordAmount + (idx < (discount.finalAmount - perRecordAmount * totalCount) ? 1 : 0)),
+    }));
+
+    const inventoryOccupation = {};
+    rowsWithAmount.forEach((r) => {
+      if (!inventoryOccupation[r.slot]) {
+        const slotConfig = getInventorySlotConfig(channelId, r.slot, inventory);
+        inventoryOccupation[r.slot] = {
+          slot: r.slot,
+          planCount: 0,
+          existingCount: 0,
+          capacity: Number(slotConfig?.capacity ?? 1),
+          overCapacity: false,
+        };
+      }
+      inventoryOccupation[r.slot].planCount += 1;
+      if (r.hasConflict) inventoryOccupation[r.slot].overCapacity = true;
+    });
+    rowsWithAmount.forEach((r) => {
+      const existing = records.filter(
+        (rec) => rec.channelId === channelId && rec.slot === r.slot && !rec.coPlay
+      );
+      inventoryOccupation[r.slot].existingCount = existing.length;
+    });
+
+    const dailyMap = {};
+    rowsWithAmount.forEach((r) => {
+      if (!dailyMap[r.date]) dailyMap[r.date] = { date: r.date, plays: 0, amount: 0, conflictCount: 0, records: [] };
+      dailyMap[r.date].plays += Number(r.plays || 0);
+      dailyMap[r.date].amount += Number(r.amount || 0);
+      if (r.hasConflict) dailyMap[r.date].conflictCount += 1;
+      dailyMap[r.date].records.push(r);
+    });
+    const dailyBreakdown = Object.values(dailyMap).sort((a, b) => a.date.localeCompare(b.date));
+
+    const conflictRisk = assessConflictRisk(conflictCount, totalCount);
+    const materialRisk = assessMaterialRisk(firstPlayDate);
+
+    return {
+      totalCount,
+      normalCount,
+      conflictCount,
+      totalPlays,
+      originalAmount: discount.originalAmount,
+      discountAmount: discount.discountAmount,
+      discountRate: discount.discountRate,
+      totalAmount: discount.finalAmount,
+      perRecordAmount,
+      inventoryOccupation,
+      conflictRisk,
+      materialRisk,
+      dailyBreakdown,
+      firstPlayDate,
+      rows: rowsWithAmount,
+    };
+  }
+
+  function generateProposalPlans() {
+    const { client, adName, channelId, startDate, endDate, weekdays, slots, playsPerDay, baseUnitPrice, discountStrategy, discountValue, status } = proposalForm;
+
+    if (!client.trim() || !adName.trim() || !startDate || !endDate || slots.length === 0 || !baseUnitPrice) {
+      alert('请填写客户、广告名称、日期范围、时段和单次播放单价');
+      return;
+    }
+
+    const allDates = getDatesInRange(startDate, endDate, weekdays);
+    if (allDates.length === 0) {
+      alert('所选日期范围内没有符合条件的投放日期');
+      return;
+    }
+
+    const allChannelSlots = getEnabledInventorySlots(channelId, inventory);
+    const premiumSlots = slots.filter((s) => slotPriceTiers[s] === 'premium');
+    const dailyPlays = Number(playsPerDay) || 4;
+
+    const plans = [];
+
+    const concSlots = premiumSlots.length > 0 ? premiumSlots : slots.slice(0, Math.min(2, slots.length));
+    const concPlaysPerSlot = Math.max(1, Math.ceil(dailyPlays / concSlots.length));
+    const concRows = buildPlanRows(channelId, allDates, concSlots, concPlaysPerSlot, client, adName, status);
+    plans.push({
+      id: uid(),
+      planType: 'concentrated',
+      form: { ...proposalForm },
+      ...buildPlanSummary(concRows, baseUnitPrice, discountStrategy, discountValue, channelId),
+      createdAt: new Date().toISOString(),
+      confirmed: false,
+    });
+
+    const balPlaysPerSlot = Math.max(1, Math.ceil(dailyPlays / slots.length));
+    const balRows = buildPlanRows(channelId, allDates, slots, balPlaysPerSlot, client, adName, status);
+    plans.push({
+      id: uid(),
+      planType: 'balanced',
+      form: { ...proposalForm },
+      ...buildPlanSummary(balRows, baseUnitPrice, discountStrategy, discountValue, channelId),
+      createdAt: new Date().toISOString(),
+      confirmed: false,
+    });
+
+    const extraSlots = allChannelSlots.filter((s) => !slots.includes(s));
+    const spreadSlots = [...slots, ...extraSlots.slice(0, 2)];
+    const spreadPlaysPerSlot = Math.max(1, Math.ceil(dailyPlays / spreadSlots.length));
+    const spreadRows = buildPlanRows(channelId, allDates, spreadSlots, spreadPlaysPerSlot, client, adName, status);
+    plans.push({
+      id: uid(),
+      planType: 'spread',
+      form: { ...proposalForm },
+      ...buildPlanSummary(spreadRows, baseUnitPrice, discountStrategy, discountValue, channelId),
+      createdAt: new Date().toISOString(),
+      confirmed: false,
+    });
+
+    setProposalPlans(plans);
+    setProposalStep('compare');
+    setSelectedProposalPlan(null);
+  }
+
+  function confirmProposalPlan(plan) {
+    const savedPlan = {
+      ...plan,
+      confirmed: false,
+      confirmedAt: null,
+    };
+    persistProposals([savedPlan, ...proposals]);
+    setProposalStep('form');
+    setProposalPlans(null);
+    setSelectedProposalPlan(null);
+  }
+
+  function confirmProposalToSchedule(proposalId) {
+    const proposal = proposals.find((p) => p.id === proposalId);
+    if (!proposal) return;
+    if (!confirm('确认将此方案写入正式排期？此操作不可撤销。')) return;
+
+    const newRecords = proposal.rows.map((row) => ({
+      id: uid(),
+      client: row.client,
+      adName: row.adName,
+      channelId: row.channelId,
+      date: row.date,
+      slot: row.slot,
+      plays: row.plays,
+      amount: row.amount,
+      status: proposal.form.status || appConfig.primaryStatus,
+      createdAt: new Date().toISOString(),
+      timeline: [{ status: proposal.form.status || appConfig.primaryStatus, at: today, by: '方案确认' }],
+      proposalId: proposal.id,
+    }));
+
+    persist([...newRecords, ...records]);
+
+    const next = proposals.map((p) =>
+      p.id === proposalId ? { ...p, confirmed: true, confirmedAt: new Date().toISOString() } : p
+    );
+    persistProposals(next);
+  }
+
+  function cancelProposal(proposalId) {
+    if (!confirm('确定要取消此方案？取消后方案将从列表中删除。')) return;
+    persistProposals(proposals.filter((p) => p.id !== proposalId));
+  }
+
+  function clearProposalPlans() {
+    setProposalPlans(null);
+    setSelectedProposalPlan(null);
+    setProposalStep('form');
+  }
+
+  function resetProposalForm() {
+    setProposalForm({
+      client: '',
+      adName: '',
+      channelId: 'channel-news',
+      startDate: '',
+      endDate: '',
+      weekdays: [1, 2, 3, 4, 5],
+      slots: [],
+      playsPerDay: '4',
+      baseUnitPrice: '',
+      discountStrategy: 'none',
+      discountValue: '',
+      status: '待确认',
+    });
+    setProposalPlans(null);
+    setSelectedProposalPlan(null);
+    setProposalStep('form');
+  }
+
+  function toggleProposalWeekday(day) {
+    setProposalForm((prev) => {
+      const exists = prev.weekdays.includes(day);
+      return { ...prev, weekdays: exists ? prev.weekdays.filter((d) => d !== day) : [...prev.weekdays, day].sort() };
+    });
+  }
+
+  function toggleProposalSlot(slot) {
+    setProposalForm((prev) => {
+      const exists = prev.slots.includes(slot);
+      return { ...prev, slots: exists ? prev.slots.filter((s) => s !== slot) : [...prev.slots, slot] };
+    });
+  }
+
+  function handleProposalClientSelect(event) {
+    const name = event.target.value;
+    if (!name) return;
+    const customer = customers.find((c) => c.name === name);
+    if (customer) {
+      setProposalForm({
+        ...proposalForm,
+        client: customer.name,
+        slots: customer.preferredSlot && !proposalForm.slots.includes(customer.preferredSlot)
+          ? [...proposalForm.slots, customer.preferredSlot]
+          : proposalForm.slots,
+      });
+    }
+  }
+
   const [reslotTarget, setReslotTarget] = useState(null);
   const [reslotValue, setReslotValue] = useState('');
 
@@ -1636,341 +1927,6 @@ function App() {
       setReslotTarget(null);
       setReslotValue('');
     }
-  }
-
-  function togglePlanWeekday(day) {
-    setPlanForm((prev) => {
-      const exists = prev.weekdays.includes(day);
-      return {
-        ...prev,
-        weekdays: exists
-          ? prev.weekdays.filter((d) => d !== day)
-          : [...prev.weekdays, day].sort(),
-      };
-    });
-  }
-
-  function togglePlanSlot(slot) {
-    setPlanForm((prev) => {
-      const exists = prev.slots.includes(slot);
-      return {
-        ...prev,
-        slots: exists
-          ? prev.slots.filter((s) => s !== slot)
-          : [...prev.slots, slot],
-      };
-    });
-  }
-
-  function handlePlanClientSelect(event) {
-    const name = event.target.value;
-    if (!name) return;
-    const customer = customers.find((c) => c.name === name);
-    if (customer) {
-      setPlanForm({
-        ...planForm,
-        client: customer.name,
-        slots: customer.preferredSlot && !planForm.slots.includes(customer.preferredSlot)
-          ? [...planForm.slots, customer.preferredSlot]
-          : planForm.slots,
-      });
-    }
-  }
-
-  function buildSinglePlan(params, variantKey, variantLabel, planIndex) {
-    const {
-      client, adName, channelId, dates, slots, playsPerDay,
-      discountStrategy, discountValue, baseRecords, inventoryData,
-      materialsData, customerHistoricalAmount, status
-    } = params;
-
-    const slotCount = slots.length;
-    const totalDays = dates.length;
-    const playsPerRecord = playsPerDay && Number(playsPerDay) > 0
-      ? String(Math.max(1, Math.round(Number(playsPerDay) / Math.max(1, slotCount))))
-      : '1';
-
-    const schedules = [];
-    let baseTotal = 0;
-    let rowIndex = 0;
-
-    dates.forEach((date, dateIdx) => {
-      slots.forEach((slot, slotIdx) => {
-        const slotBasePrice = getSlotBasePrice(slot);
-        const playsNum = Number(playsPerRecord) || 1;
-        const recordBasePrice = slotBasePrice * playsNum;
-        baseTotal += recordBasePrice;
-
-        const existingRecords = baseRecords.filter(
-          (r) => r.channelId === channelId && r.date === date && r.slot === slot && !r.coPlay
-        );
-        const usageWithThis = existingRecords.length + 1;
-        const capacityState = getSlotCapacityState(channelId, slot, usageWithThis, inventoryData);
-        const hasConflict = capacityState.isOverCapacity;
-
-        const materialRiskLevel = (() => {
-          const daysUntilStart = Math.ceil((parseDateKey(date).getTime() - new Date().getTime()) / 86400000);
-          if (daysUntilStart < 0) return { level: 'high', label: '已过期', reason: '投放日期已过' };
-          if (daysUntilStart <= 1) return { level: 'high', label: '高风险', reason: '仅余1天需准备素材' };
-          if (daysUntilStart <= 3) return { level: 'medium', label: '中风险', reason: `仅剩${daysUntilStart}天` };
-          if (daysUntilStart <= 7) return { level: 'low', label: '低风险', reason: `还有${daysUntilStart}天` };
-          return { level: 'safe', label: '充足', reason: `${daysUntilStart}天准备期` };
-        })();
-
-        schedules.push({
-          planScheduleId: `ps-${planIndex}-${dateIdx}-${slotIdx}`,
-          client,
-          adName,
-          channelId,
-          date,
-          slot,
-          plays: playsPerRecord,
-          basePrice: recordBasePrice,
-          hasConflict,
-          conflictWith: existingRecords.map((r) => ({
-            id: r.id,
-            client: r.client,
-            adName: r.adName,
-          })),
-          capacity: capacityState.capacity,
-          currentUsage: existingRecords.length,
-          inventoryUsagePercent: capacityState.capacity > 0
-            ? Math.min(100, (usageWithThis / capacityState.capacity) * 100)
-            : 0,
-          materialRisk: materialRiskLevel,
-        });
-        rowIndex += 1;
-      });
-    });
-
-    const discountContext = {
-      clientHistoricalAmount,
-      slotCount,
-      totalDays,
-    };
-    const discountResult = computeDiscount(baseTotal, discountStrategy, discountValue, discountContext);
-
-    const perScheduleAmount = schedules.length > 0
-      ? distributeTotalAmount(discountResult.discounted, schedules.length)
-      : [];
-    schedules.forEach((s, i) => {
-      s.amount = perScheduleAmount[i] || '0';
-    });
-
-    const conflictCount = schedules.filter((s) => s.hasConflict).length;
-    const highMaterialRiskCount = schedules.filter((s) => s.materialRisk.level === 'high').length;
-    const mediumMaterialRiskCount = schedules.filter((s) => s.materialRisk.level === 'medium').length;
-    const totalInventoryUsage = schedules.reduce((sum, s) => sum + s.inventoryUsagePercent, 0);
-    const avgInventoryUsage = schedules.length > 0 ? totalInventoryUsage / schedules.length : 0;
-
-    let conflictRiskLevel;
-    if (conflictCount === 0) conflictRiskLevel = { level: 'safe', label: '无冲突', color: '#059669' };
-    else if (conflictCount <= Math.ceil(schedules.length * 0.1)) conflictRiskLevel = { level: 'low', label: '低风险', color: '#2563eb' };
-    else if (conflictCount <= Math.ceil(schedules.length * 0.3)) conflictRiskLevel = { level: 'medium', label: '中风险', color: '#f59e0b' };
-    else conflictRiskLevel = { level: 'high', label: '高风险', color: '#dc2626' };
-
-    let overallMaterialRisk;
-    if (highMaterialRiskCount === 0 && mediumMaterialRiskCount === 0) overallMaterialRisk = { level: 'safe', label: '充足', color: '#059669' };
-    else if (highMaterialRiskCount === 0) overallMaterialRisk = { level: 'low', label: '基本充足', color: '#2563eb' };
-    else if (highMaterialRiskCount <= Math.ceil(schedules.length * 0.1)) overallMaterialRisk = { level: 'medium', label: '需关注', color: '#f59e0b' };
-    else overallMaterialRisk = { level: 'high', label: '高风险', color: '#dc2626' };
-
-    let inventoryOccupancyRisk;
-    if (avgInventoryUsage < 50) inventoryOccupancyRisk = { level: 'low', label: '库存充足', color: '#059669' };
-    else if (avgInventoryUsage < 80) inventoryOccupancyRisk = { level: 'medium', label: '占用较高', color: '#f59e0b' };
-    else inventoryOccupancyRisk = { level: 'high', label: '接近满仓', color: '#dc2626' };
-
-    return {
-      planId: `plan-${planIndex}-${uid()}`,
-      variantKey,
-      variantLabel,
-      client,
-      adName,
-      channelId,
-      status,
-      totalRecords: schedules.length,
-      totalDays,
-      slots: [...slots],
-      totalPlays: Number(playsPerRecord) * schedules.length,
-      baseTotal,
-      discountAmount: discountResult.discountAmount,
-      discountDesc: discountResult.desc,
-      discountedTotal: discountResult.discounted,
-      conflictCount,
-      conflictRisk: conflictRiskLevel,
-      highMaterialRiskCount,
-      mediumMaterialRiskCount,
-      materialRisk: overallMaterialRisk,
-      inventoryOccupancyRisk,
-      avgInventoryUsage,
-      schedules,
-    };
-  }
-
-  function generatePlanVariants() {
-    const { client, adName, channelId, startDate, endDate, weekdays, slots, playsPerDay, discountStrategy, discountValue, status } = planForm;
-
-    if (!client.trim() || !adName.trim() || !startDate || !endDate || slots.length === 0) {
-      alert('请填写客户、广告名称、日期范围并选择至少一个时段');
-      return;
-    }
-
-    const dates = getDatesInRange(startDate, endDate, weekdays);
-    if (dates.length === 0) {
-      alert('所选日期范围内没有符合条件的投放日期');
-      return;
-    }
-
-    const customer = customers.find((c) => c.name === client);
-    const customerHistoricalAmount = customer ? Number(customer.historicalAmount || 0) + customerAmount(client) : customerAmount(client);
-
-    const channelSlots = getEnabledInventorySlots(channelId, inventory);
-    const slotsSortedByPrice = [...slots].sort((a, b) => getSlotBasePrice(a) - getSlotBasePrice(b));
-    const slotsSortedByExpensive = [...slots].sort((a, b) => getSlotBasePrice(b) - getSlotBasePrice(a));
-
-    const params = {
-      client, adName, channelId, dates, slots, playsPerDay,
-      discountStrategy, discountValue, baseRecords: records, inventoryData: inventory,
-      materialsData: materials, customerHistoricalAmount, status
-    };
-
-    const plans = [];
-
-    plans.push(buildSinglePlan({ ...params, slots: slots }, 'balanced', '均衡方案（推荐）', 0));
-
-    if (slots.length >= 2) {
-      const cheapSlots = slotsSortedByPrice.slice(0, Math.max(1, Math.ceil(slots.length / 2)));
-      plans.push(buildSinglePlan({ ...params, slots: cheapSlots, discountStrategy: 'bulk_days' }, 'economic', '经济型方案', 1));
-    }
-
-    if (slots.length >= 2) {
-      const premiumSlots = slotsSortedByExpensive.slice(0, Math.max(1, Math.ceil(slots.length / 2)));
-      plans.push(buildSinglePlan({ ...params, slots: premiumSlots, discountStrategy: 'slot_combo' }, 'premium', '效果型方案', 2));
-    }
-
-    const allAvailSlots = channelSlots.filter((s) => !slots.includes(s));
-    if (allAvailSlots.length > 0 && slots.length >= 1) {
-      const mixedSlots = [...slots, allAvailSlots[0]];
-      plans.push(buildSinglePlan({ ...params, slots: mixedSlots, discountStrategy: 'long_term' }, 'expanded', '扩展型方案', 3));
-    }
-
-    plans.sort((a, b) => a.discountedTotal - b.discountedTotal);
-
-    setPlanResults({
-      plans,
-      inputParams: {
-        client, adName, channelId, startDate, endDate, weekdays: [...weekdays],
-        originalSlots: [...slots], playsPerDay, discountStrategy, discountValue, status,
-        dates: [...dates],
-      },
-    });
-    setSelectedPlanId(plans[0]?.planId || null);
-
-    const draftEntry = {
-      id: uid(),
-      createdAt: new Date().toISOString(),
-      inputParams: {
-        client, adName, channelId, startDate, endDate, weekdays: [...weekdays],
-        originalSlots: [...slots], playsPerDay, discountStrategy, discountValue, status,
-      },
-      planCount: plans.length,
-      planSummaries: plans.map((p) => ({
-        planId: p.planId,
-        variantLabel: p.variantLabel,
-        discountedTotal: p.discountedTotal,
-        conflictCount: p.conflictCount,
-        totalRecords: p.totalRecords,
-      })),
-    };
-    const nextHistory = [draftEntry, ...planHistory].slice(0, 20);
-    setPlanHistory(nextHistory);
-    persistPlans(nextHistory);
-  }
-
-  function clearPlanResults() {
-    setPlanResults(null);
-    setSelectedPlanId(null);
-  }
-
-  function getSelectedPlan() {
-    return planResults?.plans?.find((p) => p.planId === selectedPlanId) || null;
-  }
-
-  function confirmPlanCreate() {
-    const plan = getSelectedPlan();
-    if (!plan || plan.schedules.length === 0) return;
-
-    const rowsToCreate = planConflictMode === 'skip'
-      ? plan.schedules.filter((s) => !s.hasConflict)
-      : plan.schedules;
-
-    if (rowsToCreate.length === 0) {
-      alert('没有可创建的记录');
-      return;
-    }
-
-    const confirmMsg = `确认创建「${plan.variantLabel}」？\n`
-      + `方案金额：${money(plan.discountedTotal)}\n`
-      + `计划创建：${rowsToCreate.length}条记录${planConflictMode === 'skip' && plan.conflictCount > 0 ? `（已跳过${plan.conflictCount}条冲突）` : ''}`;
-
-    if (!confirm(confirmMsg)) return;
-
-    const newRecords = rowsToCreate.map((row) => ({
-      id: uid(),
-      client: row.client,
-      adName: row.adName,
-      channelId: row.channelId || plan.channelId,
-      date: row.date,
-      slot: row.slot,
-      plays: row.plays,
-      amount: row.amount,
-      status: plan.status || appConfig.primaryStatus,
-      createdAt: new Date().toISOString(),
-      timeline: [{ status: plan.status || appConfig.primaryStatus, at: today, by: `方案生成（${plan.variantLabel}）` }],
-      batchFlag: planConflictMode === 'create' && row.hasConflict ? true : false,
-      sourcePlanId: plan.planId,
-      sourcePlanLabel: plan.variantLabel,
-    }));
-
-    persist([...newRecords, ...records]);
-    clearPlanResults();
-    setPlanForm({
-      client: '',
-      adName: '',
-      channelId: planForm.channelId,
-      startDate: '',
-      endDate: '',
-      weekdays: [1, 2, 3, 4, 5],
-      slots: [],
-      playsPerDay: '4',
-      discountStrategy: 'none',
-      discountValue: '',
-      status: '待确认',
-    });
-  }
-
-  function loadHistoryDraft(draft) {
-    if (!draft?.inputParams) return;
-    setPlanForm({
-      client: draft.inputParams.client || '',
-      adName: draft.inputParams.adName || '',
-      channelId: draft.inputParams.channelId || 'channel-news',
-      startDate: draft.inputParams.startDate || '',
-      endDate: draft.inputParams.endDate || '',
-      weekdays: draft.inputParams.weekdays || [1, 2, 3, 4, 5],
-      slots: draft.inputParams.originalSlots || [],
-      playsPerDay: draft.inputParams.playsPerDay || '4',
-      discountStrategy: draft.inputParams.discountStrategy || 'none',
-      discountValue: draft.inputParams.discountValue || '',
-      status: draft.inputParams.status || '待确认',
-    });
-    setPlanHistoryOpen(false);
-  }
-
-  function clearPlanHistory() {
-    if (!confirm('确定清空方案历史记录？')) return;
-    setPlanHistory([]);
-    persistPlans([]);
   }
 
   return (
@@ -2626,425 +2582,283 @@ function App() {
         )}
       </section>
 
-      <section className="plan-section">
-        <div className="panel plan-form-panel">
+      <section className="proposal-section">
+        <div className="panel proposal-form-panel">
           <div className="panel-title">
-            <CalendarRange size={18} />
+            <Calculator size={18} />
             <h2>广告报价与排期方案生成</h2>
-            <span className="broadcast-hint">运营测算工具：生成多方案对比，确认后写入正式排期</span>
-            <button
-              type="button"
-              className="plan-history-btn"
-              onClick={() => setPlanHistoryOpen(!planHistoryOpen)}
-            >
-              <History size={14} />
-              历史方案 ({planHistory.length})
+          </div>
+          <p className="hint">选择客户、频道、日期范围和折扣策略后，系统将生成多个可选方案供对比测算。确认方案后才写入正式排期。</p>
+
+          <div className="proposal-step-tabs">
+            <button type="button" className={`proposal-step-tab ${proposalStep === 'form' ? 'active' : ''}`} onClick={() => { setProposalStep('form'); setProposalPlans(null); setSelectedProposalPlan(null); }}>
+              <Sparkles size={14} />方案配置
+            </button>
+            <button type="button" className={`proposal-step-tab ${proposalStep === 'compare' ? 'active' : ''}`} disabled={!proposalPlans} onClick={() => setProposalStep('compare')}>
+              <ArrowRightLeft size={14} />方案对比
+            </button>
+            <button type="button" className={`proposal-step-tab ${proposalStep === 'saved' ? 'active' : ''}`} onClick={() => { setProposalStep('saved'); setProposalPlans(null); setSelectedProposalPlan(null); }}>
+              <Eye size={14} />已保存方案（{proposals.length}）
             </button>
           </div>
-          <p className="hint">选择客户、频道、日期范围等参数，系统将自动生成多个可选方案供您对比选择。</p>
 
-          {planHistoryOpen && (
-            <div className="plan-history-panel">
-              <div className="plan-history-head">
-                <strong>方案历史记录（最近20条）</strong>
-                {planHistory.length > 0 && (
-                  <button type="button" className="ghost-danger compact" onClick={clearPlanHistory}>
-                    <Trash2 size={12} />清空
-                  </button>
-                )}
+          {proposalStep === 'form' && (
+            <div className="proposal-form">
+              <div className="form-grid">
+                <label>
+                  <span>投放频道</span>
+                  <select value={proposalForm.channelId} onChange={(e) => setProposalForm({ ...proposalForm, channelId: e.target.value, slots: [] })}>
+                    {channels.map((ch) => <option key={ch.id} value={ch.id}>{ch.name}</option>)}
+                  </select>
+                </label>
+                <label>
+                  <span>客户</span>
+                  <div className="client-select-group">
+                    <select className="client-select" value="" onChange={handleProposalClientSelect}>
+                      <option value="">从档案选择...</option>
+                      {customers.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}
+                    </select>
+                    <input type="text" value={proposalForm.client} onChange={(e) => setProposalForm({ ...proposalForm, client: e.target.value })} placeholder="蓝海家居" />
+                  </div>
+                </label>
+                <label>
+                  <span>广告名称</span>
+                  <input type="text" value={proposalForm.adName} onChange={(e) => setProposalForm({ ...proposalForm, adName: e.target.value })} placeholder="618门店促销" />
+                </label>
+                <label>
+                  <span>初始状态</span>
+                  <select value={proposalForm.status} onChange={(e) => setProposalForm({ ...proposalForm, status: e.target.value })}>
+                    {appConfig.statuses.map((s) => <option key={s}>{s}</option>)}
+                  </select>
+                </label>
               </div>
-              {planHistory.length === 0 ? (
-                <p className="empty small">暂无历史方案记录</p>
-              ) : (
-                <div className="plan-history-list">
-                  {planHistory.map((draft) => (
-                    <div key={draft.id} className="plan-history-item">
-                      <div className="history-item-main">
-                        <h4>{draft.inputParams?.adName || '未命名方案'}</h4>
-                        <p>
-                          {draft.inputParams?.client || '未知客户'} ·
-                          {getChannelById(draft.inputParams?.channelId)?.name || '未知频道'} ·
-                          {draft.inputParams?.startDate || '?'} 至 {draft.inputParams?.endDate || '?'}
-                        </p>
-                        <p className="history-item-meta">
-                          {new Date(draft.createdAt).toLocaleString('zh-CN')} ·
-                          生成{draft.planCount}个方案 ·
-                          {draft.planSummaries?.map((s) => `${s.variantLabel.split('（')[0]}:${money(s.discountedTotal)}`).join(' / ')}
-                        </p>
-                      </div>
-                      <button type="button" className="primary compact" onClick={() => loadHistoryDraft(draft)}>
-                        <RotateCcw size={12} />载入
-                      </button>
-                    </div>
+
+              <div className="proposal-date-range">
+                <label>
+                  <span>开始日期</span>
+                  <input type="date" value={proposalForm.startDate} onChange={(e) => setProposalForm({ ...proposalForm, startDate: e.target.value })} />
+                </label>
+                <label>
+                  <span>结束日期</span>
+                  <input type="date" value={proposalForm.endDate} onChange={(e) => setProposalForm({ ...proposalForm, endDate: e.target.value })} />
+                </label>
+              </div>
+
+              <label className="proposal-label">
+                <span>投放星期</span>
+                <div className="weekday-chips">
+                  {[{ v: 0, l: '日' }, { v: 1, l: '一' }, { v: 2, l: '二' }, { v: 3, l: '三' }, { v: 4, l: '四' }, { v: 5, l: '五' }, { v: 6, l: '六' }].map((d) => (
+                    <button key={d.v} type="button" className={`weekday-chip ${proposalForm.weekdays.includes(d.v) ? 'active' : ''}`} onClick={() => toggleProposalWeekday(d.v)}>{d.l}</button>
                   ))}
                 </div>
-              )}
+              </label>
+
+              <label className="proposal-label">
+                <span>投放时段（可多选）</span>
+                <div className="slot-chips">
+                  {getEnabledInventorySlots(proposalForm.channelId, inventory).map((slot) => (
+                    <button key={slot} type="button" className={`slot-chip ${proposalForm.slots.includes(slot) ? 'active' : ''} ${slotPriceTiers[slot] === 'premium' ? 'slot-premium' : ''}`} onClick={() => toggleProposalSlot(slot)}>
+                      {slot}{slotPriceTiers[slot] === 'premium' ? ' ★' : ''}
+                    </button>
+                  ))}
+                </div>
+              </label>
+
+              <div className="proposal-meta-row">
+                <label className="proposal-label">
+                  <span>每日播放次数</span>
+                  <input type="number" min="1" value={proposalForm.playsPerDay} onChange={(e) => setProposalForm({ ...proposalForm, playsPerDay: e.target.value })} placeholder="4" />
+                  <span className="batch-sub-hint">将分配到各时段</span>
+                </label>
+                <label className="proposal-label">
+                  <span>单次播放单价（元）</span>
+                  <input type="number" min="0" value={proposalForm.baseUnitPrice} onChange={(e) => setProposalForm({ ...proposalForm, baseUnitPrice: e.target.value })} placeholder="900" />
+                  <span className="batch-sub-hint">合同额 = 单价 × 播放总次 × 折扣</span>
+                </label>
+              </div>
+
+              <div className="proposal-discount-row">
+                <label className="proposal-label">
+                  <span>折扣策略</span>
+                  <select value={proposalForm.discountStrategy} onChange={(e) => setProposalForm({ ...proposalForm, discountStrategy: e.target.value, discountValue: '' })}>
+                    {discountStrategies.map((ds) => <option key={ds.key} value={ds.key}>{ds.label} - {ds.description}</option>)}
+                  </select>
+                </label>
+                {proposalForm.discountStrategy === 'percent' && (
+                  <label className="proposal-label">
+                    <span>折扣百分比（%）</span>
+                    <input type="number" min="0" max="100" value={proposalForm.discountValue} onChange={(e) => setProposalForm({ ...proposalForm, discountValue: e.target.value })} placeholder="15" />
+                  </label>
+                )}
+                {proposalForm.discountStrategy === 'tiered' && (
+                  <div className="discount-info">
+                    <span className="discount-info-title">阶梯规则</span>
+                    <span>1-20次：原价</span>
+                    <span>21-50次：95折</span>
+                    <span>51次以上：9折</span>
+                  </div>
+                )}
+                {proposalForm.discountStrategy === 'earlybird' && (
+                  <div className="discount-info">
+                    <span className="discount-info-title">早鸟规则</span>
+                    <span>首播14天前：9折</span>
+                    <span>首播7-14天前：95折</span>
+                    <span>7天内：原价</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="proposal-actions">
+                <button className="primary" type="button" onClick={generateProposalPlans}>
+                  <Sparkles size={18} />生成方案
+                </button>
+                <button className="cancel-btn" type="button" onClick={resetProposalForm}>
+                  <RotateCcw size={18} />重置
+                </button>
+              </div>
             </div>
           )}
 
-          <div className="plan-form">
-            <label className="batch-label">
-              <span>投放频道</span>
-              <select
-                value={planForm.channelId}
-                onChange={(e) => {
-                  const newChannelId = e.target.value;
-                  setPlanForm({ ...planForm, channelId: newChannelId, slots: [] });
-                }}
-              >
-                {channels.map((channel) => (
-                  <option key={channel.id} value={channel.id}>{channel.name}</option>
-                ))}
-              </select>
-            </label>
-
-            <label className="batch-label">
-              <span>客户</span>
-              <div className="client-select-group">
-                <select className="client-select" value="" onChange={handlePlanClientSelect}>
-                  <option value="">从档案选择...</option>
-                  {customers.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}
-                </select>
-                <input
-                  type="text"
-                  value={planForm.client}
-                  onChange={(e) => setPlanForm({ ...planForm, client: e.target.value })}
-                  placeholder="蓝海家居"
-                />
-              </div>
-            </label>
-
-            <label className="batch-label">
-              <span>广告名称</span>
-              <input
-                type="text"
-                value={planForm.adName}
-                onChange={(e) => setPlanForm({ ...planForm, adName: e.target.value })}
-                placeholder="618门店促销"
-              />
-            </label>
-
-            <div className="batch-date-range">
-              <label className="batch-label">
-                <span>开始日期</span>
-                <input
-                  type="date"
-                  value={planForm.startDate}
-                  onChange={(e) => setPlanForm({ ...planForm, startDate: e.target.value })}
-                />
-              </label>
-              <label className="batch-label">
-                <span>结束日期</span>
-                <input
-                  type="date"
-                  value={planForm.endDate}
-                  onChange={(e) => setPlanForm({ ...planForm, endDate: e.target.value })}
-                />
-              </label>
-            </div>
-
-            <label className="batch-label">
-              <span>投放星期</span>
-              <div className="weekday-chips">
-                {[
-                  { v: 0, label: '日' },
-                  { v: 1, label: '一' },
-                  { v: 2, label: '二' },
-                  { v: 3, label: '三' },
-                  { v: 4, label: '四' },
-                  { v: 5, label: '五' },
-                  { v: 6, label: '六' },
-                ].map((d) => (
-                  <button
-                    key={d.v}
-                    type="button"
-                    className={`weekday-chip ${planForm.weekdays.includes(d.v) ? 'active' : ''}`}
-                    onClick={() => togglePlanWeekday(d.v)}
-                  >
-                    {d.label}
-                  </button>
-                ))}
-              </div>
-            </label>
-
-            <label className="batch-label">
-              <span>投放时段（可多选）</span>
-              <div className="slot-chips">
-                {getEnabledInventorySlots(planForm.channelId, inventory).map((slot) => (
-                  <button
-                    key={slot}
-                    type="button"
-                    className={`slot-chip ${planForm.slots.includes(slot) ? 'active' : ''}`}
-                    onClick={() => togglePlanSlot(slot)}
-                  >
-                    {slot}
-                    <em className="slot-price-tag">¥{getSlotBasePrice(slot)}</em>
-                  </button>
-                ))}
-              </div>
-            </label>
-
-            <div className="batch-meta-row">
-              <label className="batch-label">
-                <span>每日播放次数</span>
-                <input
-                  type="number"
-                  min="1"
-                  value={planForm.playsPerDay}
-                  onChange={(e) => setPlanForm({ ...planForm, playsPerDay: e.target.value })}
-                  placeholder="4"
-                />
-                <span className="batch-sub-hint">将平均分配到各时段</span>
-              </label>
-              <label className="batch-label">
-                <span>初始状态</span>
-                <select
-                  value={planForm.status}
-                  onChange={(e) => setPlanForm({ ...planForm, status: e.target.value })}
-                >
-                  {appConfig.statuses.map((status) => <option key={status}>{status}</option>)}
-                </select>
-              </label>
-            </div>
-
-            <label className="batch-label">
-              <span>折扣策略</span>
-              <select
-                value={planForm.discountStrategy}
-                onChange={(e) => setPlanForm({ ...planForm, discountStrategy: e.target.value, discountValue: '' })}
-              >
-                {discountStrategies.map((ds) => (
-                  <option key={ds.id} value={ds.id}>{ds.label} - {ds.desc}</option>
-                ))}
-              </select>
-            </label>
-
-            {(planForm.discountStrategy === 'percent' || planForm.discountStrategy === 'fixed') && (
-              <label className="batch-label">
-                <span>{planForm.discountStrategy === 'percent' ? '折扣比例（如0.95表示95折）' : '减免金额（元）'}</span>
-                <input
-                  type="number"
-                  step={planForm.discountStrategy === 'percent' ? '0.01' : '1'}
-                  min={planForm.discountStrategy === 'percent' ? '0' : '0'}
-                  max={planForm.discountStrategy === 'percent' ? '1' : undefined}
-                  value={planForm.discountValue}
-                  onChange={(e) => setPlanForm({ ...planForm, discountValue: e.target.value })}
-                  placeholder={planForm.discountStrategy === 'percent' ? '0.95' : '1000'}
-                />
-              </label>
-            )}
-
-            <div className="batch-actions">
-              <button
-                className="primary"
-                type="button"
-                onClick={generatePlanVariants}
-              >
-                <Zap size={18} />生成多方案对比
-              </button>
-              {planResults && (
-                <button className="cancel-btn" type="button" onClick={clearPlanResults}>
-                  <X size={18} />清除方案
+          {proposalStep === 'compare' && proposalPlans && (
+            <div className="proposal-compare">
+              <div className="proposal-compare-header">
+                <div className="panel-title" style={{ marginBottom: 0 }}>
+                  <ArrowRightLeft size={18} />
+                  <h2>方案对比</h2>
+                </div>
+                <button className="cancel-btn" type="button" onClick={clearProposalPlans}>
+                  <X size={16} />返回配置
                 </button>
-              )}
-            </div>
-          </div>
-        </div>
+              </div>
 
-        {planResults && (
-          <div className="panel plan-results-panel">
-            <div className="panel-title">
-              <BarChart3 size={18} />
-              <h2>方案对比（共{planResults.plans.length}个）</h2>
-              <span className="broadcast-hint">
-                共{planResults.inputParams?.dates?.length || 0}天 ·
-                {planResults.inputParams?.originalSlots?.length || 0}个原始时段
-              </span>
-            </div>
+              <div className="proposal-cards">
+                {proposalPlans.map((plan) => {
+                  const meta = planTypeLabels[plan.planType];
+                  return (
+                    <div key={plan.id} className={`proposal-card ${selectedProposalPlan?.id === plan.id ? 'selected' : ''}`} style={{ borderTopColor: meta.color }}>
+                      <div className="proposal-card-header">
+                        <div className="proposal-card-type" style={{ background: `${meta.color}15`, color: meta.color }}>{meta.name}</div>
+                        <span className="proposal-card-desc">{meta.desc}</span>
+                      </div>
 
-            <div className={`plan-cards-grid plan-cards-${planResults.plans.length}`}>
-              {planResults.plans.map((plan, idx) => {
-                const isSelected = plan.planId === selectedPlanId;
-                return (
-                  <div
-                    key={plan.planId}
-                    className={`plan-card ${isSelected ? 'selected' : ''} plan-card-${plan.variantKey}`}
-                    onClick={() => setSelectedPlanId(plan.planId)}
-                  >
-                    <div className="plan-card-badge">{idx + 1}</div>
-                    <div className="plan-card-head">
-                      <h3>{plan.variantLabel}</h3>
-                      <span className={`plan-risk-tag`} style={{ background: `${plan.conflictRisk.color}20`, color: plan.conflictRisk.color }}>
-                        {plan.conflictRisk.label}
-                      </span>
-                    </div>
-                    <div className="plan-price-row">
-                      <span className="plan-price-label">合同额</span>
-                      <strong className="plan-price-value">{money(plan.discountedTotal)}</strong>
-                    </div>
-                    {plan.discountAmount > 0 && (
-                      <div className="plan-discount-row">
-                        <span className="plan-discount-tag"><Flag size={12} />{plan.discountDesc}</span>
-                        <span className="plan-discount-amount">节省{money(plan.discountAmount)}</span>
+                      <div className="proposal-card-metrics">
+                        <div className="proposal-metric">
+                          <span className="pm-label">预计合同额</span>
+                          <span className="pm-value amount">{money(plan.totalAmount)}</span>
+                          {plan.discountAmount > 0 && (
+                            <span className="pm-discount">优惠 {money(plan.discountAmount)}</span>
+                          )}
+                        </div>
+                        <div className="proposal-metric">
+                          <span className="pm-label">排期条数</span>
+                          <span className="pm-value">{plan.totalCount}</span>
+                        </div>
+                        <div className="proposal-metric">
+                          <span className="pm-label">总播放次</span>
+                          <span className="pm-value">{plan.totalPlays}次</span>
+                        </div>
                       </div>
-                    )}
-                    <div className="plan-metrics-grid">
-                      <div className="plan-metric">
-                        <span className="pm-label">记录数</span>
-                        <span className="pm-value">{plan.totalRecords}条</span>
+
+                      <div className="proposal-card-risks">
+                        <div className="proposal-risk">
+                          <span className="pr-label">冲突风险</span>
+                          <span className={`pr-badge ${riskLevelClass(plan.conflictRisk)}`}>{riskLevelLabel(plan.conflictRisk)}</span>
+                          {plan.conflictCount > 0 && <span className="pr-detail">{plan.conflictCount}条冲突</span>}
+                        </div>
+                        <div className="proposal-risk">
+                          <span className="pr-label">素材风险</span>
+                          <span className={`pr-badge ${riskLevelClass(plan.materialRisk)}`}>{riskLevelLabel(plan.materialRisk)}</span>
+                          {plan.firstPlayDate && <span className="pr-detail">首播{plan.firstPlayDate}</span>}
+                        </div>
                       </div>
-                      <div className="plan-metric">
-                        <span className="pm-label">播放</span>
-                        <span className="pm-value">{plan.totalPlays}次</span>
+
+                      <div className="proposal-card-inventory">
+                        <span className="pci-title">库存占用</span>
+                        {Object.values(plan.inventoryOccupation).map((inv) => (
+                          <div key={inv.slot} className="pci-item">
+                            <span className="pci-slot">{inv.slot}</span>
+                            <div className="pci-bar-wrap">
+                              <div className="pci-bar" style={{ width: `${Math.min(100, ((inv.existingCount + inv.planCount) / inv.capacity) * 100)}%`, background: inv.overCapacity ? '#dc2626' : inv.existingCount + inv.planCount >= inv.capacity ? '#f59e0b' : meta.color }} />
+                            </div>
+                            <span className={`pci-count ${inv.overCapacity ? 'over' : ''}`}>{inv.existingCount + inv.planCount}/{inv.capacity}</span>
+                          </div>
+                        ))}
                       </div>
-                      <div className="plan-metric">
-                        <span className="pm-label">冲突</span>
-                        <span className={`pm-value ${plan.conflictCount > 0 ? 'pm-warn' : ''}`}>{plan.conflictCount}条</span>
-                      </div>
-                      <div className="plan-metric">
-                        <span className="pm-label">库存</span>
-                        <span className={`pm-value ${plan.avgInventoryUsage >= 80 ? 'pm-warn' : ''}`}>
-                          {plan.avgInventoryUsage.toFixed(0)}%
-                        </span>
-                      </div>
-                    </div>
-                    <div className="plan-risk-row">
-                      <div className="plan-risk-item">
-                        <span className="risk-dot" style={{ background: plan.inventoryOccupancyRisk.color }} />
-                        <span>{plan.inventoryOccupancyRisk.label}</span>
-                      </div>
-                      <div className="plan-risk-item">
-                        <span className="risk-dot" style={{ background: plan.materialRisk.color }} />
-                        <span>素材{plan.materialRisk.label}</span>
+
+                      <div className="proposal-card-actions">
+                        <button className="primary compact" type="button" onClick={() => setSelectedProposalPlan(plan)}>
+                          <Eye size={14} />查看详情
+                        </button>
+                        <button className="compact" type="button" style={{ background: `${meta.color}15`, color: meta.color, border: `1px solid ${meta.color}30` }} onClick={() => confirmProposalPlan(plan)}>
+                          <ThumbsUp size={14} />保存方案
+                        </button>
                       </div>
                     </div>
-                    {plan.slots.length > 0 && (
-                      <div className="plan-slots-preview">
-                        {plan.slots.map((s) => <span key={s} className="mini-slot-tag">{s}</span>)}
-                      </div>
-                    )}
-                    <div className="plan-select-indicator">
-                      {isSelected ? <CheckCircle2 size={16} />已选中 : '点击选择'}
+                  );
+                })}
+              </div>
+
+              {selectedProposalPlan && (
+                <div className="proposal-detail-panel">
+                  <div className="proposal-detail-header">
+                    <div className="panel-title" style={{ marginBottom: 0 }}>
+                      <ClipboardList size={18} />
+                      <h2>{planTypeLabels[selectedProposalPlan.planType].name} - 每日播放拆分</h2>
                     </div>
+                    <button className="cancel-btn compact" type="button" onClick={() => setSelectedProposalPlan(null)}>
+                      <X size={14} />
+                    </button>
                   </div>
-                );
-              })}
-            </div>
 
-            {(() => {
-              const plan = getSelectedPlan();
-              if (!plan) return null;
-              const dailyBreakdown = {};
-              plan.schedules.forEach((s) => {
-                if (!dailyBreakdown[s.date]) dailyBreakdown[s.date] = { totalPlays: 0, totalAmount: 0, slots: [] };
-                dailyBreakdown[s.date].totalPlays += Number(s.plays || 0);
-                dailyBreakdown[s.date].totalAmount += Number(s.amount || 0);
-                dailyBreakdown[s.date].slots.push({
-                  slot: s.slot,
-                  plays: s.plays,
-                  amount: s.amount,
-                  hasConflict: s.hasConflict,
-                  materialRisk: s.materialRisk,
-                  inventoryUsagePercent: s.inventoryUsagePercent,
-                });
-              });
-
-              return (
-                <div className="plan-detail-section">
-                  <div className="plan-detail-head">
-                    <h3>「{plan.variantLabel}」详情</h3>
-                    <div className="plan-detail-summary-tags">
-                      <span className="summary-tag-strong">预计合同额：{money(plan.discountedTotal)}</span>
-                      {plan.discountAmount > 0 && <span className="summary-tag-discount">折扣优惠：{money(plan.discountAmount)}（{plan.discountDesc}）</span>}
+                  <div className="proposal-detail-summary">
+                    <div className="pds-item">
+                      <span className="pds-label">原价总额</span>
+                      <span className="pds-value">{money(selectedProposalPlan.originalAmount)}</span>
+                    </div>
+                    <div className="pds-item">
+                      <span className="pds-label">折扣优惠</span>
+                      <span className="pds-value discount">-{money(selectedProposalPlan.discountAmount)}</span>
+                    </div>
+                    <div className="pds-item">
+                      <span className="pds-label">折后总额</span>
+                      <span className="pds-value amount">{money(selectedProposalPlan.totalAmount)}</span>
+                    </div>
+                    <div className="pds-item">
+                      <span className="pds-label">每条金额</span>
+                      <span className="pds-value">{money(selectedProposalPlan.perRecordAmount)}</span>
                     </div>
                   </div>
 
-                  <div className="plan-detail-metrics">
-                    <div className="detail-metric-card">
-                      <ShieldAlert size={20} />
-                      <div>
-                        <span className="dm-label">冲突风险</span>
-                        <span className="dm-value" style={{ color: plan.conflictRisk.color }}>
-                          {plan.conflictRisk.label}（{plan.conflictCount}条）
-                        </span>
-                      </div>
-                    </div>
-                    <div className="detail-metric-card">
-                      <Layers size={20} />
-                      <div>
-                        <span className="dm-label">库存占用</span>
-                        <span className="dm-value" style={{ color: plan.inventoryOccupancyRisk.color }}>
-                          {plan.inventoryOccupancyRisk.label}（平均{plan.avgInventoryUsage.toFixed(0)}%）
-                        </span>
-                      </div>
-                    </div>
-                    <div className="detail-metric-card">
-                      <Package size={20} />
-                      <div>
-                        <span className="dm-label">素材准备风险</span>
-                        <span className="dm-value" style={{ color: plan.materialRisk.color }}>
-                          {plan.materialRisk.label}（高{plan.highMaterialRiskCount}/中{plan.mediumMaterialRiskCount}）
-                        </span>
-                      </div>
-                    </div>
-                    <div className="detail-metric-card">
-                      <CalendarDays size={20} />
-                      <div>
-                        <span className="dm-label">投放规模</span>
-                        <span className="dm-value">{plan.totalDays}天×{plan.slots.length}时段 = {plan.totalRecords}条</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="detail-section-title">每日播放拆分</div>
-                  <div className="plan-daily-table-wrap">
-                    <table className="plan-daily-table">
+                  <div className="proposal-detail-table-wrap">
+                    <table className="proposal-detail-table">
                       <thead>
                         <tr>
                           <th>日期</th>
                           <th>星期</th>
-                          <th>时段明细</th>
-                          <th>当日播放</th>
-                          <th>当日金额</th>
-                          <th>风险</th>
+                          <th>时段</th>
+                          <th>播放</th>
+                          <th>金额</th>
+                          <th>状态</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {Object.entries(dailyBreakdown).map(([date, info]) => {
-                          const dayOfWeek = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][new Date(date).getDay()];
-                          const hasConflict = info.slots.some((s) => s.hasConflict);
-                          const hasHighMatRisk = info.slots.some((s) => s.materialRisk.level === 'high');
+                        {selectedProposalPlan.rows.map((row) => {
+                          const dayOfWeek = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][new Date(row.date).getDay()];
                           return (
-                            <tr key={date} className={hasConflict ? 'row-conflict' : ''}>
-                              <td><strong>{date}</strong></td>
+                            <tr key={row.previewId} className={row.hasConflict ? 'row-conflict' : ''}>
+                              <td>{row.date}</td>
                               <td>{dayOfWeek}</td>
+                              <td>{row.slot}</td>
+                              <td>{row.plays}次</td>
+                              <td>{money(Number(row.amount))}</td>
                               <td>
-                                <div className="slot-detail-list">
-                                  {info.slots.map((s, i) => (
-                                    <div key={i} className={`slot-detail-item ${s.hasConflict ? 'conflict' : ''}`}>
-                                      <span className="slot-detail-name">{s.slot}</span>
-                                      <span className="slot-detail-meta">
-                                        {s.plays}次 · {money(Number(s.amount))}
-                                        <em className="inv-usage" style={{ opacity: s.inventoryUsagePercent >= 80 ? 1 : 0.6 }}>
-                                          库存{s.inventoryUsagePercent.toFixed(0)}%
-                                        </em>
-                                      </span>
-                                      {s.hasConflict && <AlertTriangle size={12} className="inline-warn" />}
-                                      {(s.materialRisk.level === 'high' || s.materialRisk.level === 'medium') && (
-                                        <em className="mat-risk-tag" style={{ color: s.materialRisk.color }}>
-                                          素材{s.materialRisk.label}
-                                        </em>
-                                      )}
-                                    </div>
-                                  ))}
-                                </div>
-                              </td>
-                              <td>{info.totalPlays}次</td>
-                              <td className="amount">{money(info.totalAmount)}</td>
-                              <td>
-                                {hasConflict && <span className="risk-mini-tag" style={{ background: '#fef3c7', color: '#b45309' }}>冲突</span>}
-                                {hasHighMatRisk && <span className="risk-mini-tag" style={{ background: '#fee2e2', color: '#991b1b' }}>素材</span>}
-                                {!hasConflict && !hasHighMatRisk && <span className="risk-mini-tag" style={{ background: '#d1fae5', color: '#065f46' }}>正常</span>}
+                                {row.hasConflict ? (
+                                  <span className="import-badge badge-conflict" title={row.conflictWith.map((c) => `${c.client}-${c.adName}`).join('、')}>
+                                    冲突
+                                  </span>
+                                ) : (
+                                  <span className="import-badge badge-ok">正常</span>
+                                )}
                               </td>
                             </tr>
                           );
@@ -3053,59 +2867,89 @@ function App() {
                     </table>
                   </div>
 
-                  {plan.conflictCount > 0 && (
-                    <div className="batch-conflict-options">
-                      <div className="batch-conflict-title">
-                        <AlertTriangle size={16} />
-                        <span>发现{plan.conflictCount}条时段冲突，请选择创建方式：</span>
-                      </div>
-                      <div className="conflict-mode-options">
-                        <label className={`conflict-mode-option ${planConflictMode === 'skip' ? 'active' : ''}`}>
-                          <input
-                            type="radio"
-                            checked={planConflictMode === 'skip'}
-                            onChange={() => setPlanConflictMode('skip')}
-                          />
-                          <SkipForward size={14} />
-                          <div>
-                            <strong>跳过冲突</strong>
-                            <span>仅创建{plan.totalRecords - plan.conflictCount}条无冲突记录</span>
+                  <div className="proposal-detail-daily">
+                    <div className="pdd-title">每日播放汇总</div>
+                    <div className="pdd-chart">
+                      {selectedProposalPlan.dailyBreakdown.map((day) => {
+                        const maxPlays = Math.max(...selectedProposalPlan.dailyBreakdown.map((d) => d.plays), 1);
+                        const height = (day.plays / maxPlays) * 100;
+                        return (
+                          <div key={day.date} className="pdd-col">
+                            <div className="pdd-value">{day.plays}次</div>
+                            <div className="pdd-bar-wrap">
+                              <div className="pdd-bar" style={{ height: `${Math.max(height, day.plays > 0 ? 8 : 0)}%`, background: day.conflictCount > 0 ? '#dc2626' : planTypeLabels[selectedProposalPlan.planType].color }} />
+                            </div>
+                            <div className="pdd-meta">
+                              <span>{day.date.slice(5)}</span>
+                              <span>{money(day.amount)}</span>
+                            </div>
                           </div>
-                        </label>
-                        <label className={`conflict-mode-option ${planConflictMode === 'create' ? 'active' : ''}`}>
-                          <input
-                            type="radio"
-                            checked={planConflictMode === 'create'}
-                            onChange={() => setPlanConflictMode('create')}
-                          />
-                          <Flag size={14} />
-                          <div>
-                            <strong>照常创建全部</strong>
-                            <span>创建{plan.totalRecords}条，冲突的{plan.conflictCount}条标记待处理</span>
-                          </div>
-                        </label>
-                      </div>
+                        );
+                      })}
                     </div>
-                  )}
-
-                  <div className="import-confirm-actions">
-                    <button
-                      className="primary"
-                      type="button"
-                      onClick={confirmPlanCreate}
-                    >
-                      <CheckCircle2 size={18} />
-                      确认此方案并写入排期（{planConflictMode === 'skip' ? plan.totalRecords - plan.conflictCount : plan.totalRecords}条）
-                    </button>
-                    <button className="cancel-btn" type="button" onClick={clearPlanResults}>
-                      放弃方案
-                    </button>
                   </div>
                 </div>
-              );
-            })()}
-          </div>
-        )}
+              )}
+            </div>
+          )}
+
+          {proposalStep === 'saved' && (
+            <div className="proposal-saved-list">
+              {proposals.length === 0 ? (
+                <div className="proposal-empty">
+                  <Calculator size={36} />
+                  <p>暂无已保存的方案。请先在"方案配置"中生成并保存方案。</p>
+                </div>
+              ) : (
+                proposals.map((proposal) => {
+                  const meta = planTypeLabels[proposal.planType];
+                  return (
+                    <article key={proposal.id} className={`proposal-saved-card ${proposal.confirmed ? 'confirmed' : ''}`}>
+                      <div className="proposal-saved-header">
+                        <div>
+                          <span className="proposal-card-type" style={{ background: `${meta.color}15`, color: meta.color }}>{meta.name}</span>
+                          <strong className="proposal-saved-client">{proposal.form.client} - {proposal.form.adName}</strong>
+                        </div>
+                        <div className="proposal-saved-badges">
+                          {proposal.confirmed ? (
+                            <span className="import-badge badge-ok">已写入排期</span>
+                          ) : (
+                            <span className="import-badge badge-warn">待确认</span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="proposal-saved-meta">
+                        <span>频道：{getChannelById(proposal.form.channelId)?.name || '未知'}</span>
+                        <span>日期：{proposal.form.startDate} ~ {proposal.form.endDate}</span>
+                        <span>排期：{proposal.totalCount}条</span>
+                        <span>播放：{proposal.totalPlays}次</span>
+                        <span className="amount">合同额：{money(proposal.totalAmount)}</span>
+                      </div>
+                      <div className="proposal-saved-risks">
+                        <span>冲突风险：<span className={`pr-badge ${riskLevelClass(proposal.conflictRisk)}`}>{riskLevelLabel(proposal.conflictRisk)}</span></span>
+                        <span>素材风险：<span className={`pr-badge ${riskLevelClass(proposal.materialRisk)}`}>{riskLevelLabel(proposal.materialRisk)}</span></span>
+                      </div>
+                      <div className="proposal-saved-actions" onClick={(e) => e.stopPropagation()}>
+                        {!proposal.confirmed && (
+                          <button className="primary compact" type="button" onClick={() => confirmProposalToSchedule(proposal.id)}>
+                            <CheckCircle2 size={14} />写入排期
+                          </button>
+                        )}
+                        <button className="cancel-btn compact" type="button" onClick={() => cancelProposal(proposal.id)}>
+                          <Ban size={14} />{proposal.confirmed ? '删除记录' : '取消方案'}
+                        </button>
+                      </div>
+                      <div className="proposal-saved-time">
+                        创建于 {new Date(proposal.createdAt).toLocaleString('zh-CN')}
+                        {proposal.confirmedAt && ` · 确认于 ${new Date(proposal.confirmedAt).toLocaleString('zh-CN')}`}
+                      </div>
+                    </article>
+                  );
+                })
+              )}
+            </div>
+          )}
+        </div>
       </section>
 
       <section className="conflict-section">
