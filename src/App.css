@@ -3179,3 +3179,622 @@ textarea { min-height: 76px; resize: vertical; }
     justify-content: center;
   }
 }
+
+.plan-section {
+  margin-top: 18px;
+  display: grid;
+  grid-template-columns: 440px minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.plan-form-panel {
+  position: sticky;
+  top: 20px;
+}
+
+.plan-form-panel .panel-title {
+  flex-wrap: wrap;
+  row-gap: 8px;
+}
+
+.plan-history-btn {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #d0d5dd;
+  background: #fff;
+  border-radius: 6px;
+  padding: 6px 12px;
+  color: #344054;
+  font-size: 13px;
+  font-weight: 700;
+  transition: all 0.16s;
+}
+
+.plan-history-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.plan-history-panel {
+  background: #f8fafc;
+  border: 1px solid #e4e7ec;
+  border-radius: 8px;
+  padding: 14px;
+  margin-bottom: 16px;
+}
+
+.plan-history-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  font-size: 14px;
+  color: #111827;
+}
+
+.plan-history-list {
+  max-height: 260px;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.plan-history-item {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 10px 12px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  transition: border-color 0.16s;
+}
+
+.plan-history-item:hover {
+  border-color: var(--accent);
+}
+
+.history-item-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.history-item-main h4 {
+  font-size: 14px;
+  color: #111827;
+  margin-bottom: 3px;
+}
+
+.history-item-main p {
+  font-size: 12px;
+  color: #667085;
+  line-height: 1.5;
+}
+
+.history-item-meta {
+  margin-top: 4px !important;
+  color: #98a2b3 !important;
+}
+
+.plan-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.plan-form .slot-chip {
+  position: relative;
+  padding-right: 56px;
+}
+
+.slot-price-tag {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent);
+  font-style: normal;
+  background: rgba(249, 115, 22, 0.1);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.slot-chip.active .slot-price-tag {
+  background: rgba(255, 255, 255, 0.25);
+  color: #fff;
+}
+
+.plan-results-panel {
+  min-height: 400px;
+}
+
+.plan-cards-grid {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.plan-cards-2 { grid-template-columns: repeat(2, 1fr); }
+.plan-cards-3 { grid-template-columns: repeat(3, 1fr); }
+.plan-cards-4 { grid-template-columns: repeat(2, 1fr); }
+
+.plan-card {
+  position: relative;
+  border: 2px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 16px;
+  background: #ffffff;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.plan-card:hover {
+  border-color: #cbd5e1;
+  transform: translateY(-2px);
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.08);
+}
+
+.plan-card.selected {
+  border-color: var(--accent);
+  background: linear-gradient(135deg, #fff7ed 0%, #ffffff 100%);
+  box-shadow: 0 12px 32px rgba(249, 115, 22, 0.15);
+}
+
+.plan-card-badge {
+  position: absolute;
+  top: -10px;
+  right: -10px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 800;
+  font-size: 13px;
+  display: grid;
+  place-content: center;
+  box-shadow: 0 4px 10px rgba(249, 115, 22, 0.3);
+}
+
+.plan-card.selected .plan-card-badge {
+  background: #ea580c;
+}
+
+.plan-card-balanced { border-top: 4px solid #2563eb; }
+.plan-card-economic { border-top: 4px solid #059669; }
+.plan-card-premium { border-top: 4px solid #dc2626; }
+.plan-card-expanded { border-top: 4px solid #8b5cf6; }
+
+.plan-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.plan-card-head h3 {
+  font-size: 15px;
+  color: #111827;
+}
+
+.plan-risk-tag {
+  white-space: nowrap;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.plan-price-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 10px 0;
+  border-top: 1px solid #f1f5f9;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.plan-price-label {
+  font-size: 12px;
+  color: #667085;
+  font-weight: 600;
+}
+
+.plan-price-value {
+  font-size: 24px;
+  color: #111827;
+  font-weight: 800;
+}
+
+.plan-discount-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  margin-bottom: 10px;
+}
+
+.plan-discount-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #fef3c7;
+  color: #b45309;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.plan-discount-amount {
+  font-size: 12px;
+  color: #059669;
+  font-weight: 700;
+}
+
+.plan-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.plan-metric {
+  background: #f8fafc;
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
+.pm-label {
+  display: block;
+  font-size: 11px;
+  color: #667085;
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.pm-value {
+  display: block;
+  font-size: 14px;
+  font-weight: 800;
+  color: #111827;
+}
+
+.pm-value.pm-warn {
+  color: #dc2626;
+}
+
+.plan-risk-row {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.plan-risk-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #475467;
+  font-weight: 600;
+}
+
+.risk-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.plan-slots-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.mini-slot-tag {
+  font-size: 10px;
+  padding: 2px 6px;
+  background: #f1f5f9;
+  color: #475467;
+  border-radius: 4px;
+  font-weight: 700;
+}
+
+.plan-select-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding-top: 10px;
+  border-top: 1px solid #f1f5f9;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.plan-card:not(.selected) .plan-select-indicator {
+  color: #98a2b3;
+}
+
+.plan-detail-section {
+  border-top: 2px solid #e4e7ec;
+  padding-top: 18px;
+}
+
+.plan-detail-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.plan-detail-head h3 {
+  font-size: 17px;
+  color: #111827;
+}
+
+.plan-detail-summary-tags {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.summary-tag-strong {
+  background: #eef2ff;
+  color: #3730a3;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.summary-tag-discount {
+  background: #d1fae5;
+  color: #065f46;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.plan-detail-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.detail-metric-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.detail-metric-card svg {
+  flex-shrink: 0;
+  color: #667085;
+}
+
+.dm-label {
+  display: block;
+  font-size: 11px;
+  color: #667085;
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.dm-value {
+  display: block;
+  font-size: 14px;
+  font-weight: 800;
+  color: #111827;
+}
+
+.plan-daily-table-wrap {
+  overflow: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  margin-bottom: 18px;
+}
+
+.plan-daily-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 700px;
+}
+
+.plan-daily-table thead {
+  background: #f8fafc;
+}
+
+.plan-daily-table th {
+  padding: 10px 12px;
+  text-align: left;
+  font-size: 12px;
+  font-weight: 700;
+  color: #475467;
+  border-bottom: 1px solid #e5e7eb;
+  white-space: nowrap;
+}
+
+.plan-daily-table td {
+  padding: 10px 12px;
+  font-size: 13px;
+  color: #344054;
+  border-bottom: 1px solid #f1f5f9;
+  vertical-align: top;
+}
+
+.plan-daily-table tbody tr:hover {
+  background: #fafafa;
+}
+
+.plan-daily-table tbody tr.row-conflict {
+  background: #fffbeb;
+}
+
+.plan-daily-table .amount {
+  font-weight: 700;
+  color: #111827;
+  white-space: nowrap;
+}
+
+.slot-detail-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.slot-detail-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 6px 8px;
+  background: #f9fafb;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.slot-detail-item.conflict {
+  background: #fef3c7;
+}
+
+.slot-detail-name {
+  font-weight: 700;
+  color: #111827;
+}
+
+.slot-detail-meta {
+  color: #667085;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.inv-usage {
+  font-style: normal;
+  font-size: 11px;
+  padding: 1px 5px;
+  background: #eef2ff;
+  color: #4338ca;
+  border-radius: 3px;
+  transition: opacity 0.2s;
+}
+
+.inline-warn {
+  color: #d97706;
+  flex-shrink: 0;
+}
+
+.mat-risk-tag {
+  font-style: normal;
+  font-weight: 700;
+  font-size: 11px;
+}
+
+.risk-mini-tag {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.batch-section,
+.conflict-section,
+.archive-section,
+.broadcast-section,
+.calendar-section,
+.analytics-section,
+.material-section,
+.insights {
+  margin-top: 18px;
+}
+
+@media (max-width: 1200px) {
+  .plan-section {
+    grid-template-columns: 1fr;
+  }
+
+  .plan-form-panel {
+    position: static;
+  }
+
+  .plan-detail-metrics {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 760px) {
+  .plan-cards-2,
+  .plan-cards-3,
+  .plan-cards-4 {
+    grid-template-columns: 1fr;
+  }
+
+  .plan-detail-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .plan-form .slot-chip {
+    padding-right: 54px;
+  }
+}
+
+@media (max-width: 480px) {
+  .plan-card-head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .plan-metrics-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .plan-risk-row {
+    flex-direction: column;
+    gap: 6px;
+  }
+}
+
+.record.source-plan {
+  border-left: 3px solid #8b5cf6;
+  position: relative;
+}
+
+.plan-source-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #f5f3ff;
+  color: #6d28d9;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  margin-top: 6px;
+}
+
+.plan-detail-head {
+  margin-top: 0;
+}
+
+.slot-detail-list {
+  margin: 0;
+}
