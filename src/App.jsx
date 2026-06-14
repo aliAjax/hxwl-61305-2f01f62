@@ -1633,18 +1633,25 @@ function App() {
     let materialStatusRisk = 'high';
     let materialDetail = null;
     if (client && adName) {
-      const matchedMaterials = materials.filter((m) =>
-        m.client === client && m.adName === adName
-      );
+      const matchedMaterials = materials.filter((m) => {
+        const linkedSchedule = records.find((r) => r.id === m.scheduleId);
+        const materialClient = m.client || linkedSchedule?.client;
+        const materialAdName = m.adName || linkedSchedule?.adName || m.copyTitle;
+        return materialClient === client && materialAdName === adName;
+      });
       if (matchedMaterials.length > 0) {
         const best = matchedMaterials.reduce((prev, curr) => {
           const priority = { '已交付': 4, '审核中': 3, '制作中': 2, '待制作': 1, '已退回': 0 };
           return (priority[curr.productionStatus] || 0) > (priority[prev.productionStatus] || 0) ? curr : prev;
         });
+        const linkedSchedule = records.find((r) => r.id === best.scheduleId);
         materialDetail = {
           id: best.id,
           status: best.productionStatus,
           copyTitle: best.copyTitle,
+          scheduleId: best.scheduleId,
+          client: best.client || linkedSchedule?.client,
+          adName: best.adName || linkedSchedule?.adName || best.copyTitle,
         };
         switch (best.productionStatus) {
           case '已交付':
@@ -1663,7 +1670,9 @@ function App() {
     }
 
     const riskLevels = { low: 0, medium: 1, high: 2 };
-    const finalRisk = Math.max(riskLevels[dateRisk], riskLevels[materialStatusRisk]);
+    const finalRisk = materialDetail?.status === '已交付'
+      ? riskLevels.low
+      : Math.max(riskLevels[dateRisk], riskLevels[materialStatusRisk]);
     return {
       level: ['low', 'medium', 'high'][finalRisk],
       dateRisk,
@@ -1763,6 +1772,8 @@ function App() {
           slot: inv.slot,
           totalPlanCount: 0,
           maxExistingCount: 0,
+          maxDailyPlanCount: 0,
+          maxDailyTotalCount: 0,
           avgOccupancy: 0,
           capacity: inv.capacity,
           dateCount: 0,
@@ -1771,6 +1782,8 @@ function App() {
       }
       slotInventoryAgg[inv.slot].totalPlanCount += inv.planCount;
       slotInventoryAgg[inv.slot].maxExistingCount = Math.max(slotInventoryAgg[inv.slot].maxExistingCount, inv.existingCount);
+      slotInventoryAgg[inv.slot].maxDailyPlanCount = Math.max(slotInventoryAgg[inv.slot].maxDailyPlanCount, inv.planCount);
+      slotInventoryAgg[inv.slot].maxDailyTotalCount = Math.max(slotInventoryAgg[inv.slot].maxDailyTotalCount, inv.existingCount + inv.planCount);
       slotInventoryAgg[inv.slot].avgOccupancy += (inv.existingCount + inv.planCount) / inv.capacity;
       slotInventoryAgg[inv.slot].dateCount += 1;
       if (inv.overCapacity) slotInventoryAgg[inv.slot].overCapacityDates += 1;
@@ -2914,7 +2927,10 @@ function App() {
                             <div className="pci-bar-wrap">
                               <div className="pci-bar" style={{ width: `${Math.min(100, agg.avgOccupancy * 100)}%`, background: agg.overCapacityDates > 0 ? '#dc2626' : agg.avgOccupancy >= 1 ? '#f59e0b' : meta.color }} />
                             </div>
-                            <span className={`pci-count ${agg.overCapacityDates > 0 ? 'over' : ''}`}>{agg.maxExistingCount + agg.totalPlanCount}/{agg.capacity}{agg.overCapacityDates > 0 && ` · ${agg.overCapacityDates}天超`}</span>
+                            <span className={`pci-count ${agg.overCapacityDates > 0 ? 'over' : ''}`}>
+                              均{Math.round(agg.avgOccupancy * 100)}% · 峰{agg.maxDailyTotalCount}/{agg.capacity}
+                              {agg.overCapacityDates > 0 && ` · ${agg.overCapacityDates}天超`}
+                            </span>
                           </div>
                         ))}
                       </div>
