@@ -1501,6 +1501,57 @@ textarea { min-height: 76px; resize: vertical; }
   margin-left: 8px;
 }
 
+.broadcast-toolbar {
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.date-range-filter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.date-range-filter svg {
+  color: #9ca3af;
+  flex-shrink: 0;
+}
+
+.date-range-filter input[type="date"] {
+  border: 0;
+  padding: 8px 0;
+  font-size: 13px;
+  color: #111827;
+  background: transparent;
+  outline: none;
+  min-width: 130px;
+}
+
+.date-range-filter input[type="date"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 0.6;
+}
+
+.date-range-filter input[type="date"]::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+}
+
+.date-range-sep {
+  color: #9ca3af;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.broadcast-record.selected {
+  border-color: var(--accent);
+  background: #fff7ed;
+  box-shadow: 0 0 0 2px rgba(249, 115, 22, 0.2);
+}
+
 .broadcast-records {
   display: grid;
   gap: 10px;
@@ -1931,6 +1982,19 @@ textarea { min-height: 76px; resize: vertical; }
   .modal-actions .primary,
   .modal-actions .cancel-btn {
     width: 100%;
+  }
+  .broadcast-toolbar {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  .date-range-filter {
+    width: 100%;
+    justify-content: space-between;
+  }
+  .date-range-filter input[type="date"] {
+    min-width: auto;
+    flex: 1;
   }
 }
 

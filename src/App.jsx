@@ -550,7 +550,7 @@ function App() {
     plays: '1',
     remark: ''
   });
-  const [broadcastFilter, setBroadcastFilter] = useState({ query: '', status: '全部' });
+  const [broadcastFilter, setBroadcastFilter] = useState({ query: '', status: '全部', startDate: '', endDate: '' });
   const [broadcastDetail, setBroadcastDetail] = useState(null);
   const [analyticsTab, setAnalyticsTab] = useState('ranking');
 
@@ -1327,6 +1327,42 @@ function App() {
       { label: '待交付', value: undeliveredCount }
     ];
   }, [records, materials]);
+
+  const broadcastListData = useMemo(() => {
+    return records
+      .filter((item) => !broadcastFilter.query || `${item.client}${item.adName}`.includes(broadcastFilter.query))
+      .filter((item) => {
+        if (broadcastFilter.status === '全部') return true;
+        return getBroadcastStatus(item) === broadcastFilter.status;
+      })
+      .filter((item) => {
+        if (!broadcastFilter.startDate && !broadcastFilter.endDate) return true;
+        const itemDate = item.date;
+        if (!itemDate) return false;
+        if (broadcastFilter.startDate && itemDate < broadcastFilter.startDate) return false;
+        if (broadcastFilter.endDate && itemDate > broadcastFilter.endDate) return false;
+        return true;
+      })
+      .filter((item) => item.status !== '待确认')
+      .sort((a, b) => {
+        const statusOrder = { '未开始': 0, '未完成': 1, '超播': 2, '已完成': 3 };
+        const orderA = statusOrder[getBroadcastStatus(a)] ?? 9;
+        const orderB = statusOrder[getBroadcastStatus(b)] ?? 9;
+        if (orderA !== orderB) return orderA - orderB;
+        return (b.date || '').localeCompare(a.date || '');
+      });
+  }, [records, broadcastFilter]);
+
+  useEffect(() => {
+    if (broadcastDetail) {
+      const stillInList = broadcastListData.some((item) => item.id === broadcastDetail.id);
+      if (!stillInList) {
+        setBroadcastDetail(null);
+      }
+    }
+  }, [broadcastListData, broadcastDetail]);
+
+  const hasBroadcastFilter = broadcastFilter.query || broadcastFilter.status !== '全部' || broadcastFilter.startDate || broadcastFilter.endDate;
 
   const channelRecords = useMemo(() => {
     return filters.channel === '全部' ? records : records.filter((r) => r.channelId === filters.channel);
@@ -3421,7 +3457,7 @@ function App() {
             <h2>播出回填</h2>
             <span className="broadcast-hint">记录每条已排期广告的实际播出情况</span>
           </div>
-          <div className="toolbar">
+          <div className="toolbar broadcast-toolbar">
             <div className="search">
               <Search size={16} />
               <input
@@ -3440,68 +3476,82 @@ function App() {
               <option>已完成</option>
               <option>超播</option>
             </select>
+            <div className="date-range-filter">
+              <CalendarRange size={16} />
+              <input
+                type="date"
+                value={broadcastFilter.startDate}
+                onChange={(e) => setBroadcastFilter({ ...broadcastFilter, startDate: e.target.value })}
+                placeholder="开始日期"
+              />
+              <span className="date-range-sep">至</span>
+              <input
+                type="date"
+                value={broadcastFilter.endDate}
+                onChange={(e) => setBroadcastFilter({ ...broadcastFilter, endDate: e.target.value })}
+                placeholder="结束日期"
+              />
+            </div>
+            <button
+              type="button"
+              className="ghost compact"
+              onClick={() => setBroadcastFilter({ query: '', status: '全部', startDate: '', endDate: '' })}
+            >
+              <RotateCcw size={14} />清空
+            </button>
           </div>
           <div className="broadcast-records">
-            {records
-              .filter((item) => !broadcastFilter.query || `${item.client}${item.adName}`.includes(broadcastFilter.query))
-              .filter((item) => {
-                if (broadcastFilter.status === '全部') return true;
-                return getBroadcastStatus(item) === broadcastFilter.status;
-              })
-              .filter((item) => item.status !== '待确认')
-              .sort((a, b) => {
-                const statusOrder = { '未开始': 0, '未完成': 1, '超播': 2, '已完成': 3 };
-                const orderA = statusOrder[getBroadcastStatus(a)] ?? 9;
-                const orderB = statusOrder[getBroadcastStatus(b)] ?? 9;
-                if (orderA !== orderB) return orderA - orderB;
-                return (b.date || '').localeCompare(a.date || '');
-              })
-              .map((item) => {
-                const actual = getActualPlays(item);
-                const planned = Number(item.plays || 0);
-                const status = getBroadcastStatus(item);
-                const progress = planned > 0 ? Math.min(100, (actual / planned) * 100) : 0;
-                return (
-                  <article
-                    className="broadcast-record"
-                    key={item.id}
-                    onClick={() => setBroadcastDetail(item)}
-                  >
-                    <div className="broadcast-record-head">
-                      <div>
-                        <h3>{item.adName}</h3>
-                        <p>{item.client} · {item.date} · {item.slot}</p>
-                      </div>
-                      <span className={'status ' + getBroadcastStatusClass(status)}>{status}</span>
+            {broadcastListData.map((item) => {
+              const actual = getActualPlays(item);
+              const planned = Number(item.plays || 0);
+              const status = getBroadcastStatus(item);
+              const progress = planned > 0 ? Math.min(100, (actual / planned) * 100) : 0;
+              const isSelected = broadcastDetail?.id === item.id;
+              return (
+                <article
+                  className={`broadcast-record ${isSelected ? 'selected' : ''}`}
+                  key={item.id}
+                  onClick={() => setBroadcastDetail(item)}
+                >
+                  <div className="broadcast-record-head">
+                    <div>
+                      <h3>{item.adName}</h3>
+                      <p>{item.client} · {item.date} · {item.slot}</p>
                     </div>
-                    <div className="broadcast-progress">
-                      <div className="progress-bar">
-                        <div
-                          className="progress-fill"
-                          style={{
-                            width: `${progress}%`,
-                            background: status === '超播' ? '#dc2626' : status === '已完成' ? '#059669' : 'var(--accent)'
-                          }}
-                        />
-                      </div>
-                      <span className="progress-text">
-                        {actual} / {planned} 次
-                        {status === '超播' && <em>（超{actual - planned}次）</em>}
-                      </span>
+                    <span className={'status ' + getBroadcastStatusClass(status)}>{status}</span>
+                  </div>
+                  <div className="broadcast-progress">
+                    <div className="progress-bar">
+                      <div
+                        className="progress-fill"
+                        style={{
+                          width: `${progress}%`,
+                          background: status === '超播' ? '#dc2626' : status === '已完成' ? '#059669' : 'var(--accent)'
+                        }}
+                      />
                     </div>
-                    <div className="broadcast-record-actions" onClick={(e) => e.stopPropagation()}>
-                      <button type="button" className="primary compact" onClick={() => openBroadcastModal(item)}>
-                        <PlayCircle size={14} />登记播出
-                      </button>
-                      <span className="broadcast-log-count">
-                        共{(item.broadcastLogs || []).length}条记录
-                      </span>
-                    </div>
-                  </article>
-                );
-              })}
-            {records.filter((item) => item.status !== '待确认').length === 0 && (
-              <p className="empty">暂无已排期的广告记录。</p>
+                    <span className="progress-text">
+                      {actual} / {planned} 次
+                      {status === '超播' && <em>（超{actual - planned}次）</em>}
+                    </span>
+                  </div>
+                  <div className="broadcast-record-actions" onClick={(e) => e.stopPropagation()}>
+                    <button type="button" className="primary compact" onClick={() => openBroadcastModal(item)}>
+                      <PlayCircle size={14} />登记播出
+                    </button>
+                    <span className="broadcast-log-count">
+                      共{(item.broadcastLogs || []).length}条记录
+                    </span>
+                  </div>
+                </article>
+              );
+            })}
+            {broadcastListData.length === 0 && (
+              <p className="empty">
+                {hasBroadcastFilter
+                  ? '当前筛选条件下没有匹配的广告记录，请调整筛选条件。'
+                  : '暂无已排期的广告记录。'}
+              </p>
             )}
           </div>
         </div>
