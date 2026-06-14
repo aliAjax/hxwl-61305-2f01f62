@@ -813,7 +813,6 @@ function App() {
   const [proposalStep, setProposalStep] = useState('form');
   const [proposalConflictMode, setProposalConflictMode] = useState('skip');
 
-  const [backupModalOpen, setBackupModalOpen] = useState(false);
   const [restoreModalOpen, setRestoreModalOpen] = useState(false);
   const [restoreFileContent, setRestoreFileContent] = useState(null);
   const [restoreParsedData, setRestoreParsedData] = useState(null);
