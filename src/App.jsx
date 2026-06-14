@@ -2,737 +2,78 @@ import { useEffect, useMemo, useState } from 'react';
 import { Radio, Plus, Search, Trash2, RotateCcw, CheckCircle2, AlertTriangle, ClipboardList, CalendarDays, Users, UserPlus, Phone, Pencil, X, ChevronLeft, ChevronRight, Calendar, FileUp, XCircle, ShieldAlert, Clock, Layers, MinusCircle, Zap, CalendarRange, SkipForward, Flag, PlayCircle, ListVideo, Mic2, BarChart3, TrendingUp, PieChart, Inbox, FileText, Package, History, Calculator, ArrowRightLeft, Sparkles, Eye, ThumbsUp, Ban, Info, Download, Upload, Database } from 'lucide-react';
 import './App.css';
 
-const appConfig = {
-  "id": "hxwl-61305",
-  "port": 61305,
-  "title": "小型电台广告排期",
-  "subtitle": "按天查看广告时段、播放次数和冲突提示",
-  "domain": "电台广告",
-  "icon": "Radio",
-  "storage": "hxwl-61305-radio-ad-schedule",
-  "accent": "#f97316",
-  "statuses": [
-    "待确认",
-    "已排期",
-    "已播完"
-  ],
-  "primaryStatus": "待确认",
-  "fields": [
-    {
-      "key": "client",
-      "label": "客户",
-      "type": "input",
-      "placeholder": "蓝海家居",
-      "options": []
-    },
-    {
-      "key": "adName",
-      "label": "广告名称",
-      "type": "input",
-      "placeholder": "618门店促销",
-      "options": []
-    },
-    {
-      "key": "date",
-      "label": "投放日期",
-      "type": "date",
-      "placeholder": "",
-      "options": []
-    },
-    {
-      "key": "slot",
-      "label": "时段",
-      "type": "select",
-      "placeholder": "08:00-09:00",
-      "options": [
-        "07:00-08:00",
-        "08:00-09:00",
-        "12:00-13:00",
-        "18:00-19:00",
-        "21:00-22:00"
-      ]
-    },
-    {
-      "key": "plays",
-      "label": "播放次数",
-      "type": "number",
-      "placeholder": "4",
-      "options": []
-    },
-    {
-      "key": "amount",
-      "label": "合同金额",
-      "type": "number",
-      "placeholder": "3600",
-      "options": []
-    }
-  ],
-  "seed": [
-    {
-      "client": "蓝海家居",
-      "adName": "618门店促销",
-      "date": "2026-06-13",
-      "slot": "08:00-09:00",
-      "plays": "4",
-      "amount": "3600",
-      "status": "已排期"
-    },
-    {
-      "client": "北城眼镜",
-      "adName": "暑期配镜",
-      "date": "2026-06-13",
-      "slot": "08:00-09:00",
-      "plays": "3",
-      "amount": "2800",
-      "status": "待确认"
-    },
-    {
-      "client": "云上烘焙",
-      "adName": "新品上线",
-      "date": "2026-06-13",
-      "slot": "08:00-09:00",
-      "plays": "2",
-      "amount": "1600",
-      "status": "已排期"
-    },
-    {
-      "client": "星河电器",
-      "adName": "年中大促",
-      "date": "2026-06-13",
-      "slot": "18:00-19:00",
-      "plays": "5",
-      "amount": "5000",
-      "status": "已排期"
-    },
-    {
-      "client": "绿洲健身",
-      "adName": "夏季会员招募",
-      "date": "2026-06-13",
-      "slot": "18:00-19:00",
-      "plays": "3",
-      "amount": "3200",
-      "status": "待确认"
-    },
-    {
-      "client": "锦绣珠宝",
-      "adName": "父亲节特惠",
-      "date": "2026-06-14",
-      "slot": "12:00-13:00",
-      "plays": "2",
-      "amount": "8000",
-      "status": "已播完"
-    }
-  ],
-  "metrics": [
-    [
-      "排期数",
-      "records.length"
-    ],
-    [
-      "今日广告",
-      "records.filter((item) => item.date === today).length"
-    ],
-    [
-      "合同额",
-      "money(records.reduce((sum, item) => sum + Number(item.amount || 0), 0))"
-    ]
-  ],
-  "filters": [
-    {
-      "key": "query",
-      "label": "客户/广告",
-      "type": "search",
-      "match": "`${item.client}${item.adName}`.includes(filters.query)"
-    },
-    {
-      "key": "status",
-      "label": "排期状态",
-      "type": "status"
-    }
-  ],
-  "cardTitle": "item.adName",
-  "cardMeta": "`${item.client} · ${item.date} · ${item.slot}`",
-  "cardDetail": "`播放${item.plays}次｜合同${money(Number(item.amount || 0))}`",
-  "dateKey": "date",
-  "conflict": "date-slot",
-  "note": "新增排期时如果同一天同一时段已有广告，要在界面里提示冲突。",
-  "defaultValues": {
-    "client": "蓝海家居",
-    "adName": "618门店促销",
-    "date": "",
-    "slot": "08:00-09:00",
-    "plays": "4",
-    "amount": "3600",
-    "status": "待确认"
-  }
-};
-
-const channels = [
-  {
-    id: 'channel-news',
-    name: '新闻台',
-    color: '#2563eb',
-    isDefault: true,
-    slots: [
-      '07:00-08:00',
-      '08:00-09:00',
-      '12:00-13:00',
-      '18:00-19:00',
-      '21:00-22:00'
-    ]
-  },
-  {
-    id: 'channel-music',
-    name: '音乐台',
-    color: '#8b5cf6',
-    isDefault: false,
-    slots: [
-      '07:00-08:00',
-      '08:00-09:00',
-      '12:00-13:00',
-      '18:00-19:00',
-      '21:00-22:00'
-    ]
-  },
-  {
-    id: 'channel-traffic',
-    name: '交通台',
-    color: '#f97316',
-    isDefault: false,
-    slots: [
-      '07:00-08:00',
-      '08:00-09:00',
-      '12:00-13:00',
-      '18:00-19:00',
-      '21:00-22:00'
-    ]
-  }
-];
-
-const inventoryStorage = 'hxwl-61305-channel-inventory';
-
-const defaultInventory = {
-  'channel-news': {
-    slots: [
-      { slot: '07:00-08:00', capacity: 3, enabled: true },
-      { slot: '08:00-09:00', capacity: 3, enabled: true },
-      { slot: '12:00-13:00', capacity: 3, enabled: true },
-      { slot: '18:00-19:00', capacity: 3, enabled: true },
-      { slot: '21:00-22:00', capacity: 3, enabled: true }
-    ]
-  },
-  'channel-music': {
-    slots: [
-      { slot: '07:00-08:00', capacity: 3, enabled: true },
-      { slot: '08:00-09:00', capacity: 3, enabled: true },
-      { slot: '12:00-13:00', capacity: 3, enabled: true },
-      { slot: '18:00-19:00', capacity: 3, enabled: true },
-      { slot: '21:00-22:00', capacity: 3, enabled: true }
-    ]
-  },
-  'channel-traffic': {
-    slots: [
-      { slot: '07:00-08:00', capacity: 3, enabled: true },
-      { slot: '08:00-09:00', capacity: 3, enabled: true },
-      { slot: '12:00-13:00', capacity: 3, enabled: true },
-      { slot: '18:00-19:00', capacity: 3, enabled: true },
-      { slot: '21:00-22:00', capacity: 3, enabled: true }
-    ]
-  }
-};
-
-function loadInventory() {
-  const raw = localStorage.getItem(inventoryStorage);
-  if (raw) {
-    try {
-      return JSON.parse(raw);
-    } catch {
-      return defaultInventory;
-    }
-  }
-  return defaultInventory;
-}
-
-function persistInventory(next) {
-  localStorage.setItem(inventoryStorage, JSON.stringify(next));
-}
-
-const customerStorage = 'hxwl-61305-customer-archive';
-
-const customerLevels = ['A级', 'B级', 'C级', 'D级'];
-const customerIndustries = ['零售', '餐饮', '教育', '医疗', '金融', '房地产', '汽车', '家居', '其他'];
-
-const defaultCustomers = [
-  { name: '蓝海家居', contact: '张经理', phone: '138-0001-0001', preferredSlot: '08:00-09:00', historicalAmount: 3600, level: 'A级', industry: '家居' },
-  { name: '北城眼镜', contact: '李总', phone: '139-0002-0002', preferredSlot: '18:00-19:00', historicalAmount: 2800, level: 'B级', industry: '零售' },
-  { name: '云上烘焙', contact: '王店长', phone: '137-0003-0003', preferredSlot: '12:00-13:00', historicalAmount: 1600, level: 'C级', industry: '餐饮' },
-];
-
-const materialStorage = 'hxwl-61305-ad-materials';
-
-const materialStatuses = ['待制作', '制作中', '审核中', '已交付', '已退回'];
-
-const defaultMaterials = [];
-
-const DATA_BACKUP_VERSION = '1.0.0';
-
-const backupStorageKeys = {
-  records: appConfig.storage,
-  customers: customerStorage,
-  inventory: inventoryStorage,
-  materials: materialStorage,
-  proposals: 'hxwl-61305-proposal-plans',
-};
-
-function createBackupData() {
-  const backup = {
-    version: DATA_BACKUP_VERSION,
-    exportedAt: new Date().toISOString(),
-    data: {},
-  };
-  Object.entries(backupStorageKeys).forEach(([key, storageKey]) => {
-    const raw = localStorage.getItem(storageKey);
-    if (raw) {
-      try {
-        backup.data[key] = JSON.parse(raw);
-      } catch {
-        backup.data[key] = key === 'inventory' ? defaultInventory : [];
-      }
-    } else {
-      backup.data[key] = key === 'inventory' ? defaultInventory : [];
-    }
-  });
-  return backup;
-}
-
-function downloadBackup(backup) {
-  const jsonStr = JSON.stringify(backup, null, 2);
-  const blob = new Blob([jsonStr], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  const dateStr = new Date().toISOString().slice(0, 10);
-  a.href = url;
-  a.download = `电台广告排期备份_${dateStr}.json`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
-
-function parseBackupFile(text) {
-  try {
-    const parsed = JSON.parse(text);
-    if (!parsed || !parsed.version || !parsed.data) {
-      return { valid: false, error: '无效的备份文件格式' };
-    }
-    return { valid: true, data: parsed };
-  } catch {
-    return { valid: false, error: '备份文件解析失败，请确认文件格式正确' };
-  }
-}
-
-function computeRestorePreview(backupData, currentState) {
-  const preview = {};
-  Object.entries(backupStorageKeys).forEach(([key]) => {
-    const incoming = backupData.data[key] || (key === 'inventory' ? {} : []);
-    const current = currentState[key];
-    if (key === 'inventory') {
-      const incomingChannels = Object.keys(incoming);
-      const currentChannels = Object.keys(current || {});
-      const overlapping = incomingChannels.filter((c) => currentChannels.includes(c));
-      preview[key] = {
-        label: '频道库存',
-        incomingCount: incomingChannels.length,
-        currentCount: currentChannels.length,
-        overlappingCount: overlapping.length,
-        newOnlyCount: incomingChannels.length - overlapping.length,
-      };
-    } else {
-      const incomingList = Array.isArray(incoming) ? incoming : [];
-      const currentList = Array.isArray(current) ? current : [];
-      const currentIds = new Set(currentList.map((item) => item.id));
-      const overlapping = incomingList.filter((item) => currentIds.has(item.id));
-      const newOnly = incomingList.filter((item) => !currentIds.has(item.id));
-      preview[key] = {
-        label: key === 'records' ? '广告排期' : key === 'customers' ? '客户档案' : key === 'materials' ? '素材记录' : '排期方案',
-        incomingCount: incomingList.length,
-        currentCount: currentList.length,
-        overlappingCount: overlapping.length,
-        newOnlyCount: newOnly.length,
-      };
-    }
-  });
-  return preview;
-}
-
-const proposalStorage = 'hxwl-61305-proposal-plans';
-
-const discountStrategies = [
-  { key: 'none', label: '无折扣', description: '按原价计算' },
-  { key: 'percent', label: '百分比折扣', description: '按总价百分比优惠' },
-  { key: 'tiered', label: '阶梯折扣', description: '按播放总量分段计价' },
-  { key: 'earlybird', label: '早鸟折扣', description: '距首播越早折扣越大' },
-];
-
-const tieredRules = [
-  { min: 0, max: 20, rate: 1.0 },
-  { min: 21, max: 50, rate: 0.95 },
-  { min: 51, max: Infinity, rate: 0.90 },
-];
-
-const earlybirdRules = [
-  { minDays: 14, rate: 0.90 },
-  { minDays: 7, rate: 0.95 },
-  { minDays: 0, rate: 1.0 },
-];
-
-const slotPriceTiers = {
-  '07:00-08:00': 'standard',
-  '08:00-09:00': 'premium',
-  '12:00-13:00': 'standard',
-  '18:00-19:00': 'premium',
-  '21:00-22:00': 'standard',
-};
-
-const planTypeLabels = {
-  concentrated: { name: '集中投放方案', desc: '聚焦黄金时段，每日高频播放', color: '#dc2626' },
-  balanced: { name: '均衡投放方案', desc: '均匀分配时段和频次', color: '#2563eb' },
-  spread: { name: '广覆盖方案', desc: '分散时段降低冲突，覆盖更多受众', color: '#059669' },
-};
-
-function loadMaterials() {
-  const raw = localStorage.getItem(materialStorage);
-  if (raw) {
-    try {
-      return JSON.parse(raw);
-    } catch {
-      return defaultMaterials.map((m) => ({ ...m, id: uid() }));
-    }
-  }
-  return defaultMaterials.map((m) => ({ ...m, id: uid() }));
-}
-
-function loadProposals() {
-  const raw = localStorage.getItem(proposalStorage);
-  if (raw) {
-    try { return JSON.parse(raw); }
-    catch { return []; }
-  }
-  return [];
-}
-
-function localDateKey(date = new Date()) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
-function parseDateKey(dateKey) {
-  const [year, month, day] = String(dateKey || '').split('-').map(Number);
-  return new Date(year, (month || 1) - 1, day || 1);
-}
-
-const today = localDateKey();
-
-function uid() {
-  return Math.random().toString(36).slice(2, 10);
-}
-
-function withIds(items) {
-  return items.map((item) => ({ id: uid(), timeline: item.timeline || [{ status: item.status, at: today, by: '系统' }], ...item }));
-}
-
-function loadRecords() {
-  const raw = localStorage.getItem(appConfig.storage);
-  if (raw) {
-    try {
-      const data = JSON.parse(raw);
-      if (data.length > 0 && !data[0].channelId) {
-        const migrated = data.map((item) => ({ ...item, channelId: 'channel-news' }));
-        localStorage.setItem(appConfig.storage, JSON.stringify(migrated));
-        return migrated;
-      }
-      return data;
-    } catch {
-      return withIds(appConfig.seed).map((item) => ({ ...item, channelId: 'channel-news' }));
-    }
-  }
-  return withIds(appConfig.seed).map((item) => ({ ...item, channelId: 'channel-news' }));
-}
-
-function loadCustomers() {
-  const raw = localStorage.getItem(customerStorage);
-  if (raw) {
-    try {
-      const data = JSON.parse(raw);
-      const migrated = data.map((c) => ({
-        ...c,
-        level: c.level || '',
-        industry: c.industry || '',
-      }));
-      if (JSON.stringify(data) !== JSON.stringify(migrated)) {
-        localStorage.setItem(customerStorage, JSON.stringify(migrated));
-      }
-      return migrated;
-    } catch {
-      return defaultCustomers.map((c) => ({ ...c, id: uid() }));
-    }
-  }
-  return defaultCustomers.map((c) => ({ ...c, id: uid() }));
-}
-
-function avg(numbers) {
-  const valid = numbers.filter((value) => Number.isFinite(value));
-  if (!valid.length) return 0;
-  return valid.reduce((sum, value) => sum + value, 0) / valid.length;
-}
-
-function money(value) {
-  return new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY', maximumFractionDigits: 0 }).format(value || 0);
-}
-
-function inNextDays(dateText, days) {
-  if (!dateText) return false;
-  const date = parseDateKey(dateText);
-  const now = parseDateKey(today);
-  const diff = (date.getTime() - now.getTime()) / 86400000;
-  return diff >= 0 && diff <= days;
-}
-
-function latestTemp(item) {
-  const temps = item.temps || [Number(item.temperature)];
-  return temps[temps.length - 1];
-}
-
-function hasHotTemp(item) {
-  const temps = item.temps || [Number(item.temperature)];
-  return temps.some((value) => Number(value) > 2);
-}
-
-function priorityRank(value) {
-  return { 危急: 0, 加急: 1, 常规: 2, 高: 0, 中: 1, 低: 2 }[value] ?? 9;
-}
-
-function hasOverlap(target, records) {
-  if (!target.bed || !target.date || !target.start || !target.end) return false;
-  return records.some((item) => item.id !== target.id && item.bed === target.bed && item.date === target.date && target.start < item.end && target.end > item.start);
-}
-
-const csvColumnMap = {
-  '客户': 'client',
-  '广告名称': 'adName',
-  '投放日期': 'date',
-  '时段': 'slot',
-  '播放次数': 'plays',
-  '合同金额': 'amount',
-};
-
-const requiredCsvColumns = ['客户', '广告名称', '投放日期', '时段', '播放次数', '合同金额'];
-
-function parseCsvLine(line) {
-  const result = [];
-  let current = '';
-  let inQuotes = false;
-  let i = 0;
-
-  while (i < line.length) {
-    const char = line[i];
-
-    if (inQuotes) {
-      if (char === '"') {
-        if (i + 1 < line.length && line[i + 1] === '"') {
-          current += '"';
-          i += 2;
-        } else {
-          inQuotes = false;
-          i++;
-        }
-      } else {
-        current += char;
-        i++;
-      }
-    } else {
-      if (char === '"') {
-        inQuotes = true;
-        i++;
-      } else if (char === ',') {
-        result.push(current.trim());
-        current = '';
-        i++;
-      } else {
-        current += char;
-        i++;
-      }
-    }
-  }
-
-  result.push(current.trim());
-  return { values: result, hasUnclosedQuote: inQuotes };
-}
-
-function parseCsv(text) {
-  const rawLines = text.split(/\r?\n/);
-  const lines = [];
-  const lineErrors = [];
-  const chineseCommaWarnings = [];
-  const emptyLines = [];
-
-  for (let i = 0; i < rawLines.length; i++) {
-    const line = rawLines[i];
-    const displayLineNo = i + 1;
-
-    if (!line.trim()) {
-      emptyLines.push(displayLineNo);
-      continue;
-    }
-
-    if (line.includes('，')) {
-      chineseCommaWarnings.push({
-        rowIndex: displayLineNo,
-        message: `第${displayLineNo}行检测到中文逗号"，"，请改为英文逗号","`,
-        preview: line.length > 40 ? line.slice(0, 40) + '...' : line,
-      });
-    }
-
-    const { values, hasUnclosedQuote } = parseCsvLine(line);
-
-    if (hasUnclosedQuote) {
-      lineErrors.push({
-        rowIndex: displayLineNo,
-        errors: ['引号未闭合，该行无法正确解析'],
-        rawLine: line,
-      });
-      continue;
-    }
-
-    lines.push({ values, rawLineNo: displayLineNo, rawLine: line });
-  }
-
-  if (lines.length < 1) {
-    return {
-      rows: [],
-      headers: [],
-      missingHeaders: requiredCsvColumns,
-      lineErrors,
-      chineseCommaWarnings,
-      parseErrors: [],
-      emptyLines,
-    };
-  }
-
-  const headers = lines[0].values.map((h) => h.trim());
-  const missingHeaders = requiredCsvColumns.filter((h) => !headers.includes(h));
-  const headerColumnCount = headers.length;
-
-  const rows = [];
-  const parseErrors = [];
-
-  for (let i = 1; i < lines.length; i++) {
-    const { values, rawLineNo, rawLine } = lines[i];
-    const rowErrors = [];
-    const row = {};
-
-    if (values.length !== headerColumnCount) {
-      if (values.length < headerColumnCount) {
-        rowErrors.push(`字段数量不足：期望${headerColumnCount}列，实际${values.length}列`);
-      } else {
-        rowErrors.push(`字段数量过多：期望${headerColumnCount}列，实际${values.length}列`);
-      }
-    }
-
-    headers.forEach((header, idx) => {
-      const key = csvColumnMap[header];
-      if (key) row[key] = values[idx] || '';
-    });
-
-    const missingFields = requiredCsvColumns
-      .filter((h) => !headers.includes(h) || !row[csvColumnMap[h]])
-      .map((h) => h);
-
-    if (missingFields.length > 0) {
-      rowErrors.push(`缺少必需字段：${missingFields.join('、')}`);
-    }
-
-    const hasParseError = rowErrors.some((e) =>
-      e.includes('字段数量') || e.includes('引号未闭合')
-    );
-
-    rows.push({
-      ...row,
-      _rowIndex: rawLineNo,
-      _missingFields: missingFields,
-      _errors: rowErrors,
-      _hasParseError: hasParseError,
-      _rawLine: rawLine,
-    });
-
-    if (hasParseError || missingFields.length === headers.length) {
-      parseErrors.push({
-        rowIndex: rawLineNo,
-        errors: rowErrors,
-        rawLine,
-      });
-    }
-  }
-
-  return {
-    rows,
-    headers,
-    missingHeaders,
-    lineErrors,
-    chineseCommaWarnings,
-    parseErrors,
-    emptyLines,
-  };
-}
-
-function statusClass(status) {
-  const index = appConfig.statuses.indexOf(status);
-  return ['status-a', 'status-b', 'status-c', 'status-d'][index] || 'status-a';
-}
-
-function getChannelById(channelId) {
-  return channels.find((c) => c.id === channelId);
-}
-
-function getChannelColor(channelId) {
-  const channel = getChannelById(channelId);
-  return channel?.color || channels.find((c) => c.isDefault)?.color || '#2563eb';
-}
-
-function getChannelSlots(channelId) {
-  const channel = getChannelById(channelId);
-  return channel?.slots || channels.find((c) => c.isDefault)?.slots || [];
-}
-
-function getChannelInventory(channelId, inventory) {
-  return inventory?.[channelId] || defaultInventory[channelId];
-}
-
-function getEnabledInventorySlots(channelId, inventory) {
-  const inventorySlots = getChannelInventory(channelId, inventory)?.slots || [];
-  const enabledSlots = inventorySlots
-    .filter((slot) => slot.enabled !== false && Number(slot.capacity || 0) > 0)
-    .map((slot) => slot.slot)
-    .filter(Boolean);
-  return enabledSlots.length > 0 ? enabledSlots : getChannelSlots(channelId);
-}
-
-function getInventorySlotConfig(channelId, slotName, inventory) {
-  return getChannelInventory(channelId, inventory)?.slots?.find((slot) => slot.slot === slotName);
-}
-
-function getSlotCapacityState(channelId, slotName, count, inventory) {
-  const slotConfig = getInventorySlotConfig(channelId, slotName, inventory);
-  const capacity = Number(slotConfig?.capacity ?? 1);
-  const isEnabled = slotConfig?.enabled !== false && capacity > 0;
-  return {
-    capacity,
-    isEnabled,
-    isOverCapacity: !isEnabled ? count > 0 : count > capacity,
-  };
-}
+import {
+  appConfig,
+  channels,
+  customerLevels,
+  customerIndustries,
+  materialStatuses,
+  discountStrategies,
+  slotPriceTiers,
+  planTypeLabels,
+  defaultInventory,
+} from './utils/constants';
+
+import {
+  uid,
+  localDateKey,
+  parseDateKey,
+  today,
+  avg,
+  money,
+  inNextDays,
+  latestTemp,
+  hasHotTemp,
+  priorityRank,
+  hasOverlap,
+  statusClass,
+  getDatesInRange,
+  distributeTotalAmount,
+  getEffectiveSlotPlays,
+} from './utils/dateMoneyUtils';
+
+import {
+  loadRecords,
+  persistRecords as storagePersistRecords,
+  loadCustomers,
+  persistCustomers as storagePersistCustomers,
+  loadInventory,
+  persistInventory,
+  loadMaterials,
+  persistMaterials as storagePersistMaterials,
+  loadProposals,
+  persistProposals as storagePersistProposals,
+  createBackupData,
+  downloadBackup,
+  parseBackupFile,
+  computeRestorePreview,
+  mergeArrayData,
+  mergeInventoryData,
+} from './utils/storage';
+
+import { parseCsv } from './utils/csvParser';
+
+import {
+  getChannelById,
+  getChannelColor,
+  getChannelSlots,
+  getChannelInventory,
+  getEnabledInventorySlots,
+  getInventorySlotConfig,
+  getSlotCapacityState,
+  getSlotUsage,
+  getAvailableMoveTargets,
+} from './utils/inventory';
+
+import {
+  calculateDiscount,
+  assessConflictRisk,
+  assessMaterialRisk,
+  riskLevelClass,
+  riskLevelLabel,
+  buildPlanRows,
+  buildPlanSummary,
+} from './utils/proposalUtils';
 
 function App() {
   const [records, setRecords] = useState(loadRecords);
@@ -853,19 +194,24 @@ function App() {
     });
   }, [inventory, selectedChannel]);
 
-  function persist(next) {
+  function persistRecords(next) {
     setRecords(next);
-    localStorage.setItem(appConfig.storage, JSON.stringify(next));
+    storagePersistRecords(next);
   }
 
   function persistCustomers(next) {
     setCustomers(next);
-    localStorage.setItem(customerStorage, JSON.stringify(next));
+    storagePersistCustomers(next);
   }
 
   function persistMaterials(next) {
     setMaterials(next);
-    localStorage.setItem(materialStorage, JSON.stringify(next));
+    storagePersistMaterials(next);
+  }
+
+  function persistProposals(next) {
+    setProposals(next);
+    storagePersistProposals(next);
   }
 
   function handlePersistInventory(next) {
@@ -911,10 +257,6 @@ function App() {
     if (!next[channelId]) return;
     next[channelId].slots = next[channelId].slots.filter((_, idx) => idx !== slotIndex);
     handlePersistInventory(next);
-  }
-
-  function getSlotUsage(channelId, slotName, recordsList) {
-    return recordsList.filter((r) => r.channelId === channelId && r.slot === slotName && !r.coPlay).length;
   }
 
   function getMaterialByScheduleId(scheduleId) {
@@ -1712,7 +1054,7 @@ function App() {
       createdAt: new Date().toISOString(),
       timeline: [{ status: appConfig.primaryStatus, at: today, by: '导入' }],
     }));
-    persist([...newRecords, ...records]);
+    persistRecords([...newRecords, ...records]);
     setImportCsv('');
     setImportResult(null);
     if (skippedCount > 0) {
@@ -1725,40 +1067,7 @@ function App() {
     setImportResult(null);
   }
 
-  function getDatesInRange(startDate, endDate, weekdays) {
-    const dates = [];
-    const start = parseDateKey(startDate);
-    const end = parseDateKey(endDate);
-    if (isNaN(start.getTime()) || isNaN(end.getTime()) || start > end) return dates;
-    const current = new Date(start);
-    while (current <= end) {
-      const dayOfWeek = current.getDay();
-      if (weekdays.includes(dayOfWeek)) {
-        dates.push(localDateKey(current));
-      }
-      current.setDate(current.getDate() + 1);
-    }
-    return dates;
-  }
 
-  function distributeTotalAmount(totalAmount, totalRecords) {
-    if (!totalRecords) return [];
-    const total = totalAmount && Number(totalAmount) > 0 ? Math.round(Number(totalAmount)) : 0;
-    const base = Math.floor(total / totalRecords);
-    const remainder = total % totalRecords;
-    return Array.from({ length: totalRecords }, (_, index) => String(base + (index < remainder ? 1 : 0)));
-  }
-
-  function getEffectiveSlotPlays(slot, slots, slotPlays, playsPerDay) {
-    const customVal = slotPlays && slotPlays[slot];
-    if (customVal != null && customVal !== '' && Number(customVal) > 0) {
-      return String(Math.max(1, Math.round(Number(customVal))));
-    }
-    const total = playsPerDay && Number(playsPerDay) > 0 ? Number(playsPerDay) : slots.length;
-    return slots.length > 0
-      ? String(Math.max(1, Math.round(total / slots.length)))
-      : '1';
-  }
 
   function generateBatchPreview() {
     const { client, adName, channelId, startDate, endDate, weekdays, slots, playsPerDay, slotPlays, totalAmount, status } = batchForm;
@@ -1864,7 +1173,7 @@ function App() {
       batchFlag: batchConflictMode === 'create' && row.hasConflict ? true : false,
     }));
 
-    persist([...newRecords, ...records]);
+    persistRecords([...newRecords, ...records]);
     setBatchPreview(null);
     setBatchForm({
       client: '',
@@ -1927,270 +1236,7 @@ function App() {
     }
   }
 
-  function persistProposals(next) {
-    setProposals(next);
-    localStorage.setItem(proposalStorage, JSON.stringify(next));
-  }
 
-  function calculateDiscount(totalPlays, baseAmount, strategy, discountValue, firstPlayDate) {
-    const originalAmount = baseAmount * totalPlays;
-    if (strategy === 'none') {
-      return { originalAmount, discountRate: 1, discountAmount: 0, finalAmount: originalAmount };
-    }
-    if (strategy === 'percent') {
-      const pct = Math.min(100, Math.max(0, Number(discountValue || 0)));
-      const discountRate = (100 - pct) / 100;
-      const discountAmount = Math.round(originalAmount * (pct / 100));
-      return { originalAmount, discountRate, discountAmount, finalAmount: originalAmount - discountAmount };
-    }
-    if (strategy === 'tiered') {
-      let finalAmount = 0;
-      let remaining = totalPlays;
-      for (const rule of tieredRules) {
-        if (remaining <= 0) break;
-        const rangeSize = rule.max === Infinity ? remaining : rule.max - rule.min;
-        const applicable = Math.min(remaining, rangeSize);
-        finalAmount += baseAmount * applicable * rule.rate;
-        remaining -= applicable;
-      }
-      const discountAmount = originalAmount - Math.round(finalAmount);
-      const discountRate = originalAmount > 0 ? finalAmount / originalAmount : 1;
-      return { originalAmount, discountRate, discountAmount, finalAmount: Math.round(finalAmount) };
-    }
-    if (strategy === 'earlybird') {
-      if (!firstPlayDate) {
-        return { originalAmount, discountRate: 1, discountAmount: 0, finalAmount: originalAmount };
-      }
-      const firstDate = parseDateKey(firstPlayDate);
-      const nowDate = parseDateKey(today);
-      const daysAhead = Math.floor((firstDate.getTime() - nowDate.getTime()) / 86400000);
-      let rate = 1;
-      for (const rule of earlybirdRules) {
-        if (daysAhead >= rule.minDays) {
-          rate = rule.rate;
-          break;
-        }
-      }
-      const discountAmount = Math.round(originalAmount * (1 - rate));
-      return { originalAmount, discountRate: rate, discountAmount, finalAmount: originalAmount - discountAmount };
-    }
-    return { originalAmount, discountRate: 1, discountAmount: 0, finalAmount: originalAmount };
-  }
-
-  function assessConflictRisk(conflictCount, totalCount) {
-    if (totalCount === 0) return { level: 'low', conflictCount: 0, totalCount: 0, ratio: 0 };
-    const ratio = conflictCount / totalCount;
-    let level = 'low';
-    if (ratio === 0) level = 'low';
-    else if (ratio <= 0.3) level = 'medium';
-    else level = 'high';
-    return { level, conflictCount, totalCount, ratio: Math.round(ratio * 100) / 100 };
-  }
-
-  function assessMaterialRisk(firstPlayDate, client, adName) {
-    let dateRisk = 'high';
-    if (firstPlayDate) {
-      const firstDate = parseDateKey(firstPlayDate);
-      const nowDate = parseDateKey(today);
-      const daysAhead = Math.floor((firstDate.getTime() - nowDate.getTime()) / 86400000);
-      if (daysAhead >= 14) dateRisk = 'low';
-      else if (daysAhead >= 7) dateRisk = 'medium';
-    }
-
-    let materialStatusRisk = 'high';
-    let materialDetail = null;
-    if (client && adName) {
-      const matchedMaterials = materials.filter((m) => {
-        const linkedSchedule = records.find((r) => r.id === m.scheduleId);
-        const materialClient = m.client || linkedSchedule?.client;
-        const materialAdName = m.adName || linkedSchedule?.adName || m.copyTitle;
-        return materialClient === client && materialAdName === adName;
-      });
-      if (matchedMaterials.length > 0) {
-        const best = matchedMaterials.reduce((prev, curr) => {
-          const priority = { '已交付': 4, '审核中': 3, '制作中': 2, '待制作': 1, '已退回': 0 };
-          return (priority[curr.productionStatus] || 0) > (priority[prev.productionStatus] || 0) ? curr : prev;
-        });
-        const linkedSchedule = records.find((r) => r.id === best.scheduleId);
-        materialDetail = {
-          id: best.id,
-          status: best.productionStatus,
-          copyTitle: best.copyTitle,
-          scheduleId: best.scheduleId,
-          client: best.client || linkedSchedule?.client,
-          adName: best.adName || linkedSchedule?.adName || best.copyTitle,
-        };
-        switch (best.productionStatus) {
-          case '已交付':
-            materialStatusRisk = 'low';
-            break;
-          case '审核中':
-          case '制作中':
-            materialStatusRisk = 'medium';
-            break;
-          case '待制作':
-          case '已退回':
-          default:
-            materialStatusRisk = 'high';
-        }
-      }
-    }
-
-    const riskLevels = { low: 0, medium: 1, high: 2 };
-    const finalRisk = materialDetail?.status === '已交付'
-      ? riskLevels.low
-      : Math.max(riskLevels[dateRisk], riskLevels[materialStatusRisk]);
-    return {
-      level: ['low', 'medium', 'high'][finalRisk],
-      dateRisk,
-      materialStatusRisk,
-      materialDetail,
-      daysAhead: firstPlayDate
-        ? Math.floor((parseDateKey(firstPlayDate).getTime() - parseDateKey(today).getTime()) / 86400000)
-        : null,
-    };
-  }
-
-  function riskLevelClass(level) {
-    const l = typeof level === 'object' && level !== null ? level.level : level;
-    return { low: 'risk-low', medium: 'risk-medium', high: 'risk-high' }[l] || 'risk-low';
-  }
-
-  function riskLevelLabel(level) {
-    const l = typeof level === 'object' && level !== null ? level.level : level;
-    return { low: '低', medium: '中', high: '高' }[l] || '低';
-  }
-
-  function buildPlanRows(channelId, dates, slots, playsPerSlot, client, adName) {
-    const rows = [];
-    const dateSlotCounter = {};
-    dates.forEach((date, dateIdx) => {
-      slots.forEach((slot, slotIdx) => {
-        const key = `${date}::${slot}`;
-        const planCountOnDateSlot = (dateSlotCounter[key] || 0) + 1;
-        const existingOnDateSlot = records.filter(
-          (r) => r.channelId === channelId && r.date === date && r.slot === slot && !r.coPlay
-        );
-        const totalCount = existingOnDateSlot.length + planCountOnDateSlot;
-        const capacityState = getSlotCapacityState(channelId, slot, totalCount, inventory);
-        const row = {
-          previewId: `pp-${dateIdx}-${slotIdx}`,
-          client,
-          adName,
-          channelId,
-          date,
-          slot,
-          plays: String(playsPerSlot),
-          hasConflict: capacityState.isOverCapacity,
-          conflictWith: existingOnDateSlot.map((r) => ({ id: r.id, client: r.client, adName: r.adName })),
-          capacity: capacityState.capacity,
-          existingCountOnSlot: existingOnDateSlot.length,
-          planCountOnSlot: planCountOnDateSlot,
-        };
-        rows.push(row);
-        dateSlotCounter[key] = planCountOnDateSlot;
-      });
-    });
-    return rows;
-  }
-
-  function buildPlanSummary(rows, baseUnitPrice, discountStrategy, discountValue, channelId, client, adName) {
-    const totalCount = rows.length;
-    const conflictCount = rows.filter((r) => r.hasConflict).length;
-    const normalCount = totalCount - conflictCount;
-    const totalPlays = rows.reduce((sum, r) => sum + Number(r.plays || 0), 0);
-    const firstPlayDate = rows.length > 0 ? rows.slice().sort((a, b) => a.date.localeCompare(b.date))[0].date : null;
-
-    const discount = calculateDiscount(totalPlays, Number(baseUnitPrice || 0), discountStrategy, discountValue, firstPlayDate);
-    const perRecordAmount = totalCount > 0 ? Math.round(discount.finalAmount / totalCount) : 0;
-    const rowsWithAmount = rows.map((r, idx) => ({
-      ...r,
-      amount: String(perRecordAmount + (idx < (discount.finalAmount - perRecordAmount * totalCount) ? 1 : 0)),
-    }));
-
-    const inventoryOccupation = {};
-    rowsWithAmount.forEach((r) => {
-      const key = `${r.date}::${r.slot}`;
-      if (!inventoryOccupation[key]) {
-        const slotConfig = getInventorySlotConfig(channelId, r.slot, inventory);
-        const existingOnSlot = records.filter(
-          (rec) => rec.channelId === channelId && rec.date === r.date && rec.slot === r.slot && !rec.coPlay
-        ).length;
-        inventoryOccupation[key] = {
-          key,
-          date: r.date,
-          slot: r.slot,
-          planCount: 0,
-          existingCount: existingOnSlot,
-          capacity: Number(slotConfig?.capacity ?? 1),
-          overCapacity: false,
-        };
-      }
-      inventoryOccupation[key].planCount += 1;
-      if (inventoryOccupation[key].existingCount + inventoryOccupation[key].planCount > inventoryOccupation[key].capacity) {
-        inventoryOccupation[key].overCapacity = true;
-      }
-    });
-
-    const slotInventoryAgg = {};
-    Object.values(inventoryOccupation).forEach((inv) => {
-      if (!slotInventoryAgg[inv.slot]) {
-        slotInventoryAgg[inv.slot] = {
-          slot: inv.slot,
-          totalPlanCount: 0,
-          maxExistingCount: 0,
-          maxDailyPlanCount: 0,
-          maxDailyTotalCount: 0,
-          avgOccupancy: 0,
-          capacity: inv.capacity,
-          dateCount: 0,
-          overCapacityDates: 0,
-        };
-      }
-      slotInventoryAgg[inv.slot].totalPlanCount += inv.planCount;
-      slotInventoryAgg[inv.slot].maxExistingCount = Math.max(slotInventoryAgg[inv.slot].maxExistingCount, inv.existingCount);
-      slotInventoryAgg[inv.slot].maxDailyPlanCount = Math.max(slotInventoryAgg[inv.slot].maxDailyPlanCount, inv.planCount);
-      slotInventoryAgg[inv.slot].maxDailyTotalCount = Math.max(slotInventoryAgg[inv.slot].maxDailyTotalCount, inv.existingCount + inv.planCount);
-      slotInventoryAgg[inv.slot].avgOccupancy += (inv.existingCount + inv.planCount) / inv.capacity;
-      slotInventoryAgg[inv.slot].dateCount += 1;
-      if (inv.overCapacity) slotInventoryAgg[inv.slot].overCapacityDates += 1;
-    });
-    Object.values(slotInventoryAgg).forEach((agg) => {
-      agg.avgOccupancy = agg.dateCount > 0 ? Math.round(agg.avgOccupancy / agg.dateCount * 100) / 100 : 0;
-    });
-
-    const dailyMap = {};
-    rowsWithAmount.forEach((r) => {
-      if (!dailyMap[r.date]) dailyMap[r.date] = { date: r.date, plays: 0, amount: 0, conflictCount: 0, records: [] };
-      dailyMap[r.date].plays += Number(r.plays || 0);
-      dailyMap[r.date].amount += Number(r.amount || 0);
-      if (r.hasConflict) dailyMap[r.date].conflictCount += 1;
-      dailyMap[r.date].records.push(r);
-    });
-    const dailyBreakdown = Object.values(dailyMap).sort((a, b) => a.date.localeCompare(b.date));
-
-    const conflictRisk = assessConflictRisk(conflictCount, totalCount);
-    const materialRisk = assessMaterialRisk(firstPlayDate, client, adName);
-
-    return {
-      totalCount,
-      normalCount,
-      conflictCount,
-      totalPlays,
-      originalAmount: discount.originalAmount,
-      discountAmount: discount.discountAmount,
-      discountRate: discount.discountRate,
-      totalAmount: discount.finalAmount,
-      perRecordAmount,
-      inventoryOccupation,
-      slotInventoryAgg,
-      conflictRisk,
-      materialRisk,
-      dailyBreakdown,
-      firstPlayDate,
-      rows: rowsWithAmount,
-    };
-  }
 
   function generateProposalPlans() {
     const { client, adName, channelId, startDate, endDate, weekdays, slots, playsPerDay, baseUnitPrice, discountStrategy, discountValue } = proposalForm;
@@ -2214,23 +1260,23 @@ function App() {
 
     const concSlots = premiumSlots.length > 0 ? premiumSlots : slots.slice(0, Math.min(2, slots.length));
     const concPlaysPerSlot = Math.max(1, Math.ceil(dailyPlays / concSlots.length));
-    const concRows = buildPlanRows(channelId, allDates, concSlots, concPlaysPerSlot, client, adName);
+    const concRows = buildPlanRows(channelId, allDates, concSlots, concPlaysPerSlot, client, adName, records, inventory);
     plans.push({
       id: uid(),
       planType: 'concentrated',
       form: { ...proposalForm },
-      ...buildPlanSummary(concRows, baseUnitPrice, discountStrategy, discountValue, channelId, client, adName),
+      ...buildPlanSummary(concRows, baseUnitPrice, discountStrategy, discountValue, channelId, client, adName, records, materials, inventory),
       createdAt: new Date().toISOString(),
       confirmed: false,
     });
 
     const balPlaysPerSlot = Math.max(1, Math.ceil(dailyPlays / slots.length));
-    const balRows = buildPlanRows(channelId, allDates, slots, balPlaysPerSlot, client, adName);
+    const balRows = buildPlanRows(channelId, allDates, slots, balPlaysPerSlot, client, adName, records, inventory);
     plans.push({
       id: uid(),
       planType: 'balanced',
       form: { ...proposalForm },
-      ...buildPlanSummary(balRows, baseUnitPrice, discountStrategy, discountValue, channelId, client, adName),
+      ...buildPlanSummary(balRows, baseUnitPrice, discountStrategy, discountValue, channelId, client, adName, records, materials, inventory),
       createdAt: new Date().toISOString(),
       confirmed: false,
     });
@@ -2238,12 +1284,12 @@ function App() {
     const extraSlots = allChannelSlots.filter((s) => !slots.includes(s));
     const spreadSlots = [...slots, ...extraSlots.slice(0, 2)];
     const spreadPlaysPerSlot = Math.max(1, Math.ceil(dailyPlays / spreadSlots.length));
-    const spreadRows = buildPlanRows(channelId, allDates, spreadSlots, spreadPlaysPerSlot, client, adName);
+    const spreadRows = buildPlanRows(channelId, allDates, spreadSlots, spreadPlaysPerSlot, client, adName, records, inventory);
     plans.push({
       id: uid(),
       planType: 'spread',
       form: { ...proposalForm },
-      ...buildPlanSummary(spreadRows, baseUnitPrice, discountStrategy, discountValue, channelId, client, adName),
+      ...buildPlanSummary(spreadRows, baseUnitPrice, discountStrategy, discountValue, channelId, client, adName, records, materials, inventory),
       createdAt: new Date().toISOString(),
       confirmed: false,
     });
@@ -2327,7 +1373,7 @@ function App() {
       };
     });
 
-    persist([...newRecords, ...records]);
+    persistRecords([...newRecords, ...records]);
 
     const next = proposals.map((p) =>
       p.id === proposalId
