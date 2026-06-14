@@ -2130,8 +2130,66 @@ function App() {
 
   const [reslotTarget, setReslotTarget] = useState(null);
   const [reslotValue, setReslotValue] = useState('');
+  const [moveChannelTarget, setMoveChannelTarget] = useState(null);
+  const [moveChannelValue, setMoveChannelValue] = useState({ channelId: '', slot: '' });
+
+  function getAvailableMoveTargets(recordId, currentChannelId, currentDate, currentSlot) {
+    const targets = [];
+    channels.forEach((channel) => {
+      if (channel.id === currentChannelId) return;
+      const channelSlots = getEnabledInventorySlots(channel.id, inventory);
+      channelSlots.forEach((slot) => {
+        const usage = records.filter(
+          (r) => r.id !== recordId && r.channelId === channel.id && r.date === currentDate && r.slot === slot && !r.coPlay
+        ).length;
+        const { capacity, isEnabled } = getSlotCapacityState(channel.id, slot, usage, inventory);
+        if (isEnabled && usage < capacity) {
+          targets.push({
+            channelId: channel.id,
+            channelName: channel.name,
+            channelColor: channel.color,
+            slot,
+            usage,
+            capacity
+          });
+        }
+      });
+    });
+    return targets;
+  }
+
+  function resolveByMoveChannel(recordId) {
+    if (reslotTarget === recordId) {
+      setReslotTarget(null);
+      setReslotValue('');
+    }
+    setMoveChannelTarget(recordId);
+    setMoveChannelValue({ channelId: '', slot: '' });
+  }
+
+  function confirmMoveChannel() {
+    if (!moveChannelTarget || !moveChannelValue.channelId || !moveChannelValue.slot) return;
+    const next = records.map((item) =>
+      item.id === moveChannelTarget
+        ? { ...item, channelId: moveChannelValue.channelId, slot: moveChannelValue.slot }
+        : item
+    );
+    persist(next);
+    if (selected?.id === moveChannelTarget) setSelected(next.find((item) => item.id === moveChannelTarget));
+    setMoveChannelTarget(null);
+    setMoveChannelValue({ channelId: '', slot: '' });
+  }
+
+  function cancelMoveChannel() {
+    setMoveChannelTarget(null);
+    setMoveChannelValue({ channelId: '', slot: '' });
+  }
 
   function resolveByReslot(recordId) {
+    if (moveChannelTarget === recordId) {
+      setMoveChannelTarget(null);
+      setMoveChannelValue({ channelId: '', slot: '' });
+    }
     setReslotTarget(recordId);
     setReslotValue('');
   }
@@ -2162,6 +2220,10 @@ function App() {
     if (reslotTarget === recordId) {
       setReslotTarget(null);
       setReslotValue('');
+    }
+    if (moveChannelTarget === recordId) {
+      setMoveChannelTarget(null);
+      setMoveChannelValue({ channelId: '', slot: '' });
     }
   }
 
@@ -2416,19 +2478,73 @@ function App() {
                             <X size={14} />
                           </button>
                         </div>
+                      ) : moveChannelTarget === item.id ? (
+                        <div className="reslot-inline move-channel-inline">
+                          <select
+                            value={moveChannelValue.channelId}
+                            onChange={(e) => {
+                              const channelId = e.target.value;
+                              setMoveChannelValue({ channelId, slot: '' });
+                            }}
+                          >
+                            <option value="">选择频道</option>
+                            {channels
+                              .filter((c) => c.id !== item.channelId)
+                              .map((c) => (
+                                <option key={c.id} value={c.id}>
+                                  {c.name}
+                                </option>
+                              ))}
+                          </select>
+                          {moveChannelValue.channelId && (
+                            <select
+                              value={moveChannelValue.slot}
+                              onChange={(e) => setMoveChannelValue({ ...moveChannelValue, slot: e.target.value })}
+                            >
+                              <option value="">选择时段</option>
+                              {getAvailableMoveTargets(item.id, item.channelId, item.date, item.slot)
+                                .filter((t) => t.channelId === moveChannelValue.channelId)
+                                .map((t) => (
+                                  <option key={`${t.channelId}-${t.slot}`} value={t.slot}>
+                                    {t.slot} ({t.usage}/{t.capacity})
+                                  </option>
+                                ))}
+                            </select>
+                          )}
+                          <button
+                            className="primary compact"
+                            type="button"
+                            onClick={confirmMoveChannel}
+                            disabled={!moveChannelValue.channelId || !moveChannelValue.slot}
+                          >
+                            <CheckCircle2 size={14} />
+                          </button>
+                          <button className="cancel-btn compact" type="button" onClick={cancelMoveChannel}>
+                            <X size={14} />
+                          </button>
+                        </div>
                       ) : (
-                        <button type="button" className="reslot-btn compact-action" onClick={() => resolveByReslot(item.id)}>
-                          <Clock size={14} />改时段
-                        </button>
-                      )}
-                      {!item.coPlay && (
-                        <button type="button" className="co-play-single-btn compact-action" onClick={() => {
-                          const next = records.map((r) => r.id === item.id ? { ...r, coPlay: true } : r);
-                          persist(next);
-                          if (selected?.id === item.id) setSelected(next.find((r) => r.id === item.id));
-                        }}>
-                          <Layers size={14} />可并播
-                        </button>
+                        <>
+                          <button type="button" className="reslot-btn compact-action" onClick={() => resolveByReslot(item.id)}>
+                            <Clock size={14} />改时段
+                          </button>
+                          <button
+                            type="button"
+                            className="move-channel-btn compact-action"
+                            onClick={() => resolveByMoveChannel(item.id)}
+                          >
+                            <ArrowRightLeft size={14} />移动
+                          </button>
+                          {!item.coPlay && (
+                            <button type="button" className="co-play-single-btn compact-action" onClick={() => {
+                              const next = records.map((r) => r.id === item.id ? { ...r, coPlay: true } : r);
+                              persist(next);
+                              if (selected?.id === item.id) setSelected(next.find((r) => r.id === item.id));
+                            }}>
+                              <Layers size={14} />可并播
+                            </button>
+                          )}
+                        </>
                       )}
                     </>
                   )}
@@ -3439,10 +3555,62 @@ function App() {
                                 <X size={14} />
                               </button>
                             </div>
+                          ) : moveChannelTarget === item.id ? (
+                            <div className="reslot-inline move-channel-inline">
+                              <select
+                                value={moveChannelValue.channelId}
+                                onChange={(e) => {
+                                  const channelId = e.target.value;
+                                  setMoveChannelValue({ channelId, slot: '' });
+                                }}
+                              >
+                                <option value="">选择目标频道</option>
+                                {channels
+                                  .filter((c) => c.id !== group.channelId)
+                                  .map((c) => (
+                                    <option key={c.id} value={c.id}>
+                                      {c.name}
+                                    </option>
+                                  ))}
+                              </select>
+                              {moveChannelValue.channelId && (
+                                <select
+                                  value={moveChannelValue.slot}
+                                  onChange={(e) => setMoveChannelValue({ ...moveChannelValue, slot: e.target.value })}
+                                >
+                                  <option value="">选择目标时段</option>
+                                  {getAvailableMoveTargets(item.id, group.channelId, group.date, group.slot)
+                                    .filter((t) => t.channelId === moveChannelValue.channelId)
+                                    .map((t) => (
+                                      <option key={`${t.channelId}-${t.slot}`} value={t.slot}>
+                                        {t.slot} ({t.usage}/{t.capacity})
+                                      </option>
+                                    ))}
+                                </select>
+                              )}
+                              <button
+                                className="primary compact"
+                                type="button"
+                                onClick={confirmMoveChannel}
+                                disabled={!moveChannelValue.channelId || !moveChannelValue.slot}
+                              >
+                                <CheckCircle2 size={14} />确认移动
+                              </button>
+                              <button className="cancel-btn compact" type="button" onClick={cancelMoveChannel}>
+                                <X size={14} />
+                              </button>
+                            </div>
                           ) : (
                             <>
                               <button type="button" className="reslot-btn" onClick={() => resolveByReslot(item.id)}>
                                 <Clock size={14} />改时段
+                              </button>
+                              <button
+                                type="button"
+                                className="move-channel-btn"
+                                onClick={() => resolveByMoveChannel(item.id)}
+                              >
+                                <ArrowRightLeft size={14} />移动频道
                               </button>
                               <button type="button" className="co-play-single-btn" onClick={() => {
                                 const next = records.map((r) => r.id === item.id ? { ...r, coPlay: true } : r);
@@ -4336,10 +4504,62 @@ function App() {
                         <X size={14} />取消
                       </button>
                     </div>
+                  ) : moveChannelTarget === selected.id ? (
+                    <div className="reslot-inline move-channel-inline">
+                      <select
+                        value={moveChannelValue.channelId}
+                        onChange={(e) => {
+                          const channelId = e.target.value;
+                          setMoveChannelValue({ channelId, slot: '' });
+                        }}
+                      >
+                        <option value="">选择目标频道</option>
+                        {channels
+                          .filter((c) => c.id !== selected.channelId)
+                          .map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.name}
+                            </option>
+                          ))}
+                      </select>
+                      {moveChannelValue.channelId && (
+                        <select
+                          value={moveChannelValue.slot}
+                          onChange={(e) => setMoveChannelValue({ ...moveChannelValue, slot: e.target.value })}
+                        >
+                          <option value="">选择目标时段</option>
+                          {getAvailableMoveTargets(selected.id, selected.channelId, selected.date, selected.slot)
+                            .filter((t) => t.channelId === moveChannelValue.channelId)
+                            .map((t) => (
+                              <option key={`${t.channelId}-${t.slot}`} value={t.slot}>
+                                {t.slot} ({t.usage}/{t.capacity})
+                              </option>
+                            ))}
+                        </select>
+                      )}
+                      <button
+                        className="primary compact"
+                        type="button"
+                        onClick={confirmMoveChannel}
+                        disabled={!moveChannelValue.channelId || !moveChannelValue.slot}
+                      >
+                        <CheckCircle2 size={14} />确认移动
+                      </button>
+                      <button className="cancel-btn compact" type="button" onClick={cancelMoveChannel}>
+                        <X size={14} />取消
+                      </button>
+                    </div>
                   ) : (
                     <div className="detail-action-btns">
                       <button type="button" className="reslot-btn" onClick={() => resolveByReslot(selected.id)}>
                         <Clock size={14} />改时段
+                      </button>
+                      <button
+                        type="button"
+                        className="move-channel-btn"
+                        onClick={() => resolveByMoveChannel(selected.id)}
+                      >
+                        <ArrowRightLeft size={14} />移动频道
                       </button>
                       <button type="button" className="co-play-single-btn" onClick={() => {
                         const next = records.map((r) => r.id === selected.id ? { ...r, coPlay: true } : r);

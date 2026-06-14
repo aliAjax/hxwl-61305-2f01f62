@@ -990,6 +990,33 @@ textarea { min-height: 76px; resize: vertical; }
   color: #fff;
 }
 
+.move-channel-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid #059669;
+  background: #ecfdf5;
+  color: #047857;
+  border-radius: 6px;
+  padding: 7px 12px;
+  font-weight: 700;
+  font-size: 13px;
+  transition: background .16s, color .16s;
+}
+
+.move-channel-btn:hover {
+  background: #059669;
+  color: #fff;
+}
+
+.move-channel-inline {
+  flex-wrap: wrap;
+}
+
+.move-channel-inline select {
+  min-width: 130px;
+}
+
 .conflict-item-info {
   flex: 1;
   min-width: 0;
