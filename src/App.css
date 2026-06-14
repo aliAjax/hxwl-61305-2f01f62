@@ -703,14 +703,86 @@ textarea { min-height: 76px; resize: vertical; }
   color: #047857;
 }
 
+.badge-error {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.badge-warn {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.import-table tr.row-error td {
+  background: #fef2f2;
+}
+
+.row-error-detail {
+  font-size: 11px;
+  color: #991b1b;
+  margin-top: 4px;
+  line-height: 1.4;
+  white-space: normal;
+  max-width: 220px;
+}
+
+.import-table .status-cell {
+  white-space: normal;
+  min-width: 150px;
+}
+
+.chinese-comma-list {
+  margin-top: 6px;
+  padding-left: 24px;
+}
+
+.chinese-comma-item {
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.6;
+  opacity: 0.9;
+}
+
+.chinese-comma-more {
+  font-size: 12px;
+  font-weight: 500;
+  opacity: 0.7;
+  font-style: italic;
+}
+
 .import-confirm-actions {
   display: flex;
-  gap: 10px;
+  flex-direction: column;
+  gap: 12px;
   margin-top: 14px;
 }
 
 .import-confirm-actions .primary {
   flex: 1;
+}
+
+.import-summary {
+  font-size: 13px;
+  font-weight: 600;
+  color: #475467;
+  text-align: center;
+  padding: 8px 12px;
+  background: #f8fafc;
+  border-radius: 6px;
+  border: 1px solid #e4e7ec;
+}
+
+.import-skip-info {
+  color: #b91c1c;
+}
+
+.import-ok-info {
+  color: #047857;
+}
+
+.import-summary strong {
+  font-size: 14px;
+  font-weight: 800;
 }
 
 .conflict-section {

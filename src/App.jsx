@@ -439,29 +439,158 @@ const csvColumnMap = {
 
 const requiredCsvColumns = ['客户', '广告名称', '投放日期', '时段', '播放次数', '合同金额'];
 
-function parseCsv(text) {
-  const lines = text.trim().split(/\r?\n/).filter((line) => line.trim());
-  if (lines.length < 2) return { rows: [], headers: [], missingHeaders: [] };
+function parseCsvLine(line) {
+  const result = [];
+  let current = '';
+  let inQuotes = false;
+  let i = 0;
 
-  const headers = lines[0].split(',').map((h) => h.trim());
-  const knownHeaders = Object.keys(csvColumnMap);
+  while (i < line.length) {
+    const char = line[i];
+
+    if (inQuotes) {
+      if (char === '"') {
+        if (i + 1 < line.length && line[i + 1] === '"') {
+          current += '"';
+          i += 2;
+        } else {
+          inQuotes = false;
+          i++;
+        }
+      } else {
+        current += char;
+        i++;
+      }
+    } else {
+      if (char === '"') {
+        inQuotes = true;
+        i++;
+      } else if (char === ',') {
+        result.push(current.trim());
+        current = '';
+        i++;
+      } else {
+        current += char;
+        i++;
+      }
+    }
+  }
+
+  result.push(current.trim());
+  return { values: result, hasUnclosedQuote: inQuotes };
+}
+
+function parseCsv(text) {
+  const rawLines = text.split(/\r?\n/);
+  const lines = [];
+  const lineErrors = [];
+  const chineseCommaWarnings = [];
+
+  for (let i = 0; i < rawLines.length; i++) {
+    const line = rawLines[i];
+    const displayLineNo = i + 1;
+
+    if (!line.trim()) {
+      lineErrors.push({ rowIndex: displayLineNo, errors: ['空行已跳过'] });
+      continue;
+    }
+
+    if (line.includes('，')) {
+      chineseCommaWarnings.push({
+        rowIndex: displayLineNo,
+        message: `第${displayLineNo}行检测到中文逗号"，"，请改为英文逗号","`,
+        preview: line.length > 40 ? line.slice(0, 40) + '...' : line,
+      });
+    }
+
+    const { values, hasUnclosedQuote } = parseCsvLine(line);
+
+    if (hasUnclosedQuote) {
+      lineErrors.push({
+        rowIndex: displayLineNo,
+        errors: ['引号未闭合，该行无法正确解析'],
+        rawLine: line,
+      });
+      continue;
+    }
+
+    lines.push({ values, rawLineNo: displayLineNo, rawLine: line });
+  }
+
+  if (lines.length < 1) {
+    return {
+      rows: [],
+      headers: [],
+      missingHeaders: requiredCsvColumns,
+      lineErrors,
+      chineseCommaWarnings,
+      parseErrors: [],
+    };
+  }
+
+  const headers = lines[0].values.map((h) => h.trim());
   const missingHeaders = requiredCsvColumns.filter((h) => !headers.includes(h));
+  const headerColumnCount = headers.length;
 
   const rows = [];
+  const parseErrors = [];
+
   for (let i = 1; i < lines.length; i++) {
-    const values = lines[i].split(',').map((v) => v.trim());
+    const { values, rawLineNo, rawLine } = lines[i];
+    const rowErrors = [];
     const row = {};
+
+    if (values.length !== headerColumnCount) {
+      if (values.length < headerColumnCount) {
+        rowErrors.push(`字段数量不足：期望${headerColumnCount}列，实际${values.length}列`);
+      } else {
+        rowErrors.push(`字段数量过多：期望${headerColumnCount}列，实际${values.length}列`);
+      }
+    }
+
     headers.forEach((header, idx) => {
       const key = csvColumnMap[header];
       if (key) row[key] = values[idx] || '';
     });
+
     const missingFields = requiredCsvColumns
       .filter((h) => !headers.includes(h) || !row[csvColumnMap[h]])
       .map((h) => h);
-    rows.push({ ...row, _rowIndex: i, _missingFields: missingFields });
+
+    if (missingFields.length > 0) {
+      rowErrors.push(`缺少必需字段：${missingFields.join('、')}`);
+    }
+
+    const hasParseError = rowErrors.some((e) =>
+      e.includes('字段数量') || e.includes('引号未闭合')
+    );
+
+    rows.push({
+      ...row,
+      _rowIndex: rawLineNo,
+      _missingFields: missingFields,
+      _errors: rowErrors,
+      _hasParseError: hasParseError,
+      _rawLine: rawLine,
+    });
+
+    if (hasParseError || missingFields.length === headers.length) {
+      parseErrors.push({
+        rowIndex: rawLineNo,
+        errors: rowErrors,
+        rawLine,
+      });
+    }
   }
 
-  return { rows, headers, missingHeaders };
+  return {
+    rows,
+    headers,
+    missingHeaders,
+    lineErrors,
+    chineseCommaWarnings,
+    parseErrors,
+  };
 }
 
 function statusClass(status) {
@@ -1408,12 +1537,13 @@ function App() {
     const conflicts = [];
     const importChannelId = filters.channel === '全部' ? 'channel-news' : filters.channel;
     result.rows.forEach((row, idx) => {
+      if (row._hasParseError) return;
       if (row.date && row.slot) {
         const existingConflict = records.some(
           (r) => r.channelId === importChannelId && r.date === row.date && r.slot === row.slot && !r.coPlay
         );
         const internalConflict = result.rows.some(
-          (r, j) => j !== idx && r.date === row.date && r.slot === row.slot
+          (r, j) => !r._hasParseError && j !== idx && r.date === row.date && r.slot === row.slot
         );
         if (existingConflict || internalConflict) {
           conflicts.push({ rowIndex: idx, date: row.date, slot: row.slot });
@@ -1426,7 +1556,9 @@ function App() {
   function handleConfirmImport() {
     if (!importResult || !importResult.rows.length) return;
     const importChannelId = filters.channel === '全部' ? 'channel-news' : filters.channel;
-    const newRecords = importResult.rows.map((row) => ({
+    const validRows = importResult.rows.filter((row) => !row._hasParseError && row._missingFields.length === 0);
+    const skippedCount = importResult.rows.length - validRows.length;
+    const newRecords = validRows.map((row) => ({
       id: uid(),
       client: row.client || '',
       adName: row.adName || '',
@@ -1442,6 +1574,9 @@ function App() {
     persist([...newRecords, ...records]);
     setImportCsv('');
     setImportResult(null);
+    if (skippedCount > 0) {
+      console.log(`已跳过 ${skippedCount} 条存在错误的记录`);
+    }
   }
 
   function handleClearImport() {
@@ -2574,13 +2709,13 @@ function App() {
             <FileUp size={18} />
             <h2>数据导入预览</h2>
           </div>
-          <p className="hint">粘贴CSV格式数据，表头需包含：客户、广告名称、投放日期、时段、播放次数、合同金额</p>
+          <p className="hint">粘贴CSV格式数据，支持引号包裹含逗号的内容。表头需包含：客户、广告名称、投放日期、时段、播放次数、合同金额</p>
           <textarea
             className="import-textarea"
-            rows={6}
+            rows={8}
             value={importCsv}
             onChange={(e) => setImportCsv(e.target.value)}
-            placeholder={'客户,广告名称,投放日期,时段,播放次数,合同金额\n蓝海家居,618促销,2026-06-15,08:00-09:00,4,3600\n北城眼镜,暑期配镜,2026-06-15,18:00-19:00,3,2800'}
+            placeholder={'客户,广告名称,投放日期,时段,播放次数,合同金额\n蓝海家居,"618促销,买一送一",2026-06-15,08:00-09:00,4,3600\n北城眼镜,暑期配镜特惠,2026-06-15,18:00-19:00,3,2800\n"视,康眼镜","高端镜片,5折优惠",2026-06-16,10:00-11:00,2,2000'}
           />
           <div className="import-actions">
             <button className="primary" type="button" onClick={handleParseCsv} disabled={!importCsv.trim()}>
@@ -2605,6 +2740,40 @@ function App() {
               <div className="import-alert import-alert-error">
                 <XCircle size={16} />
                 <span>缺少必需列：{importResult.missingHeaders.join('、')}</span>
+              </div>
+            )}
+
+            {importResult.chineseCommaWarnings && importResult.chineseCommaWarnings.length > 0 && (
+              <div className="import-alert import-alert-warn">
+                <AlertTriangle size={16} />
+                <div>
+                  <span>检测到 {importResult.chineseCommaWarnings.length} 处中文逗号误用，请改为英文逗号：</span>
+                  <div className="chinese-comma-list">
+                    {importResult.chineseCommaWarnings.slice(0, 5).map((w, i) => (
+                      <div key={i} className="chinese-comma-item">第{w.rowIndex}行：{w.preview}</div>
+                    ))}
+                    {importResult.chineseCommaWarnings.length > 5 && (
+                      <div className="chinese-comma-more">...另有 {importResult.chineseCommaWarnings.length - 5} 处</div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {importResult.lineErrors && importResult.lineErrors.length > 0 && (
+              <div className="import-alert import-alert-error">
+                <XCircle size={16} />
+                <div>
+                  <span>解析错误 {importResult.lineErrors.length} 条，已跳过：</span>
+                  <div className="chinese-comma-list">
+                    {importResult.lineErrors.slice(0, 5).map((e, i) => (
+                      <div key={i} className="chinese-comma-item">第{e.rowIndex}行：{e.errors.join('；')}</div>
+                    ))}
+                    {importResult.lineErrors.length > 5 && (
+                      <div className="chinese-comma-more">...另有 {importResult.lineErrors.length - 5} 处</div>
+                    )}
+                  </div>
+                </div>
               </div>
             )}
 
@@ -2634,8 +2803,10 @@ function App() {
                     {importResult.rows.map((row, idx) => {
                       const isConflict = importResult.conflicts.some((c) => c.rowIndex === idx);
                       const hasMissing = row._missingFields.length > 0;
+                      const hasParseError = row._hasParseError;
+                      const rowClass = hasParseError ? 'row-error' : isConflict ? 'row-conflict' : hasMissing ? 'row-missing' : '';
                       return (
-                        <tr key={idx} className={isConflict ? 'row-conflict' : hasMissing ? 'row-missing' : ''}>
+                        <tr key={idx} className={rowClass}>
                           <td>{row._rowIndex}</td>
                           <td>{row.client || '-'}</td>
                           <td>{row.adName || '-'}</td>
@@ -2643,10 +2814,27 @@ function App() {
                           <td>{row.slot || '-'}</td>
                           <td>{row.plays || '-'}</td>
                           <td>{row.amount ? money(Number(row.amount)) : '-'}</td>
-                          <td>
-                            {isConflict && <span className="import-badge badge-conflict">冲突</span>}
-                            {hasMissing && <span className="import-badge badge-missing">缺{row._missingFields.join('/')}</span>}
-                            {!isConflict && !hasMissing && <span className="import-badge badge-ok">正常</span>}
+                          <td className="status-cell">
+                            {hasParseError && (
+                              <div>
+                                <span className="import-badge badge-error">错误</span>
+                                {row._errors && row._errors.length > 0 && (
+                                  <div className="row-error-detail">{row._errors.join('；')}</div>
+                                )}
+                              </div>
+                            )}
+                            {!hasParseError && isConflict && <span className="import-badge badge-conflict">冲突</span>}
+                            {!hasParseError && !isConflict && hasMissing && (
+                              <div>
+                                <span className="import-badge badge-missing">缺{row._missingFields.join('/')}</span>
+                                {row._errors && row._errors.filter(e => !e.includes('缺少必需字段')).length > 0 && (
+                                  <div className="row-error-detail">
+                                    {row._errors.filter(e => !e.includes('缺少必需字段')).join('；')}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                            {!hasParseError && !isConflict && !hasMissing && <span className="import-badge badge-ok">正常</span>}
                           </td>
                         </tr>
                       );
@@ -2657,15 +2845,37 @@ function App() {
             )}
 
             <div className="import-confirm-actions">
-              <button
-                className="primary"
-                type="button"
-                onClick={handleConfirmImport}
-                disabled={importResult.rows.length === 0}
-              >
-                <FileUp size={18} />确认导入
-              </button>
-              <button className="cancel-btn" type="button" onClick={handleClearImport}>取消</button>
+              {(() => {
+                const totalRows = importResult.rows.length;
+                const invalidRows = importResult.rows.filter((r) => r._hasParseError || r._missingFields.length > 0).length;
+                const validRows = totalRows - invalidRows;
+                const skipped = (importResult.lineErrors?.length || 0) + invalidRows;
+                return (
+                  <div className="import-summary">
+                    {skipped > 0 && (
+                      <span className="import-skip-info">
+                        将跳过 <strong>{skipped}</strong> 条错误记录，导入 <strong>{validRows}</strong> 条正常记录
+                      </span>
+                    )}
+                    {skipped === 0 && (
+                      <span className="import-ok-info">
+                        共 <strong>{totalRows}</strong> 条记录可正常导入
+                      </span>
+                    )}
+                  </div>
+                );
+              })()}
+              <div style={{ display: 'flex', gap: '10px', width: '100%' }}>
+                <button
+                  className="primary"
+                  type="button"
+                  onClick={handleConfirmImport}
+                  disabled={importResult.rows.filter((r) => !r._hasParseError && r._missingFields.length === 0).length === 0}
+                >
+                  <FileUp size={18} />确认导入
+                </button>
+                <button className="cancel-btn" type="button" onClick={handleClearImport}>取消</button>
+              </div>
             </div>
           </div>
         )}
