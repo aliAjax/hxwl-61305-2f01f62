@@ -575,6 +575,7 @@ function App() {
   const [proposalPlans, setProposalPlans] = useState(null);
   const [selectedProposalPlan, setSelectedProposalPlan] = useState(null);
   const [proposalStep, setProposalStep] = useState('form');
+  const [proposalConflictMode, setProposalConflictMode] = useState('skip');
 
   useEffect(() => {
     if (filters.channel !== '全部') {
@@ -1610,42 +1611,93 @@ function App() {
   }
 
   function assessConflictRisk(conflictCount, totalCount) {
-    if (totalCount === 0) return 'low';
+    if (totalCount === 0) return { level: 'low', conflictCount: 0, totalCount: 0, ratio: 0 };
     const ratio = conflictCount / totalCount;
-    if (ratio === 0) return 'low';
-    if (ratio <= 0.3) return 'medium';
-    return 'high';
+    let level = 'low';
+    if (ratio === 0) level = 'low';
+    else if (ratio <= 0.3) level = 'medium';
+    else level = 'high';
+    return { level, conflictCount, totalCount, ratio: Math.round(ratio * 100) / 100 };
   }
 
-  function assessMaterialRisk(firstPlayDate) {
-    if (!firstPlayDate) return 'high';
-    const firstDate = parseDateKey(firstPlayDate);
-    const nowDate = parseDateKey(today);
-    const daysAhead = Math.floor((firstDate.getTime() - nowDate.getTime()) / 86400000);
-    if (daysAhead >= 14) return 'low';
-    if (daysAhead >= 7) return 'medium';
-    return 'high';
+  function assessMaterialRisk(firstPlayDate, client, adName) {
+    let dateRisk = 'high';
+    if (firstPlayDate) {
+      const firstDate = parseDateKey(firstPlayDate);
+      const nowDate = parseDateKey(today);
+      const daysAhead = Math.floor((firstDate.getTime() - nowDate.getTime()) / 86400000);
+      if (daysAhead >= 14) dateRisk = 'low';
+      else if (daysAhead >= 7) dateRisk = 'medium';
+    }
+
+    let materialStatusRisk = 'high';
+    let materialDetail = null;
+    if (client && adName) {
+      const matchedMaterials = materials.filter((m) =>
+        m.client === client && m.adName === adName
+      );
+      if (matchedMaterials.length > 0) {
+        const best = matchedMaterials.reduce((prev, curr) => {
+          const priority = { '已交付': 4, '审核中': 3, '制作中': 2, '待制作': 1, '已退回': 0 };
+          return (priority[curr.productionStatus] || 0) > (priority[prev.productionStatus] || 0) ? curr : prev;
+        });
+        materialDetail = {
+          id: best.id,
+          status: best.productionStatus,
+          copyTitle: best.copyTitle,
+        };
+        switch (best.productionStatus) {
+          case '已交付':
+            materialStatusRisk = 'low';
+            break;
+          case '审核中':
+          case '制作中':
+            materialStatusRisk = 'medium';
+            break;
+          case '待制作':
+          case '已退回':
+          default:
+            materialStatusRisk = 'high';
+        }
+      }
+    }
+
+    const riskLevels = { low: 0, medium: 1, high: 2 };
+    const finalRisk = Math.max(riskLevels[dateRisk], riskLevels[materialStatusRisk]);
+    return {
+      level: ['low', 'medium', 'high'][finalRisk],
+      dateRisk,
+      materialStatusRisk,
+      materialDetail,
+      daysAhead: firstPlayDate
+        ? Math.floor((parseDateKey(firstPlayDate).getTime() - parseDateKey(today).getTime()) / 86400000)
+        : null,
+    };
   }
 
   function riskLevelClass(level) {
-    return { low: 'risk-low', medium: 'risk-medium', high: 'risk-high' }[level] || 'risk-low';
+    const l = typeof level === 'object' && level !== null ? level.level : level;
+    return { low: 'risk-low', medium: 'risk-medium', high: 'risk-high' }[l] || 'risk-low';
   }
 
   function riskLevelLabel(level) {
-    return { low: '低', medium: '中', high: '高' }[level] || '低';
+    const l = typeof level === 'object' && level !== null ? level.level : level;
+    return { low: '低', medium: '中', high: '高' }[l] || '低';
   }
 
   function buildPlanRows(channelId, dates, slots, playsPerSlot, client, adName) {
     const rows = [];
-    let rowIndex = 0;
+    const dateSlotCounter = {};
     dates.forEach((date, dateIdx) => {
       slots.forEach((slot, slotIdx) => {
-        const existingRecords = records.filter(
+        const key = `${date}::${slot}`;
+        const planCountOnDateSlot = (dateSlotCounter[key] || 0) + 1;
+        const existingOnDateSlot = records.filter(
           (r) => r.channelId === channelId && r.date === date && r.slot === slot && !r.coPlay
         );
-        const usageWithPlan = existingRecords.length + 1;
-        const capacityState = getSlotCapacityState(channelId, slot, usageWithPlan, inventory);
-        rows.push({
+        const totalCount = existingOnDateSlot.length + planCountOnDateSlot;
+        const capacityState = getSlotCapacityState(channelId, slot, totalCount, inventory);
+        const row = {
           previewId: `pp-${dateIdx}-${slotIdx}`,
           client,
           adName,
@@ -1654,16 +1706,19 @@ function App() {
           slot,
           plays: String(playsPerSlot),
           hasConflict: capacityState.isOverCapacity,
-          conflictWith: existingRecords.map((r) => ({ id: r.id, client: r.client, adName: r.adName })),
+          conflictWith: existingOnDateSlot.map((r) => ({ id: r.id, client: r.client, adName: r.adName })),
           capacity: capacityState.capacity,
-        });
-        rowIndex += 1;
+          existingCountOnSlot: existingOnDateSlot.length,
+          planCountOnSlot: planCountOnDateSlot,
+        };
+        rows.push(row);
+        dateSlotCounter[key] = planCountOnDateSlot;
       });
     });
     return rows;
   }
 
-  function buildPlanSummary(rows, baseUnitPrice, discountStrategy, discountValue, channelId) {
+  function buildPlanSummary(rows, baseUnitPrice, discountStrategy, discountValue, channelId, client, adName) {
     const totalCount = rows.length;
     const conflictCount = rows.filter((r) => r.hasConflict).length;
     const normalCount = totalCount - conflictCount;
@@ -1679,24 +1734,49 @@ function App() {
 
     const inventoryOccupation = {};
     rowsWithAmount.forEach((r) => {
-      if (!inventoryOccupation[r.slot]) {
+      const key = `${r.date}::${r.slot}`;
+      if (!inventoryOccupation[key]) {
         const slotConfig = getInventorySlotConfig(channelId, r.slot, inventory);
-        inventoryOccupation[r.slot] = {
+        const existingOnSlot = records.filter(
+          (rec) => rec.channelId === channelId && rec.date === r.date && rec.slot === r.slot && !rec.coPlay
+        ).length;
+        inventoryOccupation[key] = {
+          key,
+          date: r.date,
           slot: r.slot,
           planCount: 0,
-          existingCount: 0,
+          existingCount: existingOnSlot,
           capacity: Number(slotConfig?.capacity ?? 1),
           overCapacity: false,
         };
       }
-      inventoryOccupation[r.slot].planCount += 1;
-      if (r.hasConflict) inventoryOccupation[r.slot].overCapacity = true;
+      inventoryOccupation[key].planCount += 1;
+      if (inventoryOccupation[key].existingCount + inventoryOccupation[key].planCount > inventoryOccupation[key].capacity) {
+        inventoryOccupation[key].overCapacity = true;
+      }
     });
-    rowsWithAmount.forEach((r) => {
-      const existing = records.filter(
-        (rec) => rec.channelId === channelId && rec.slot === r.slot && !rec.coPlay
-      );
-      inventoryOccupation[r.slot].existingCount = existing.length;
+
+    const slotInventoryAgg = {};
+    Object.values(inventoryOccupation).forEach((inv) => {
+      if (!slotInventoryAgg[inv.slot]) {
+        slotInventoryAgg[inv.slot] = {
+          slot: inv.slot,
+          totalPlanCount: 0,
+          maxExistingCount: 0,
+          avgOccupancy: 0,
+          capacity: inv.capacity,
+          dateCount: 0,
+          overCapacityDates: 0,
+        };
+      }
+      slotInventoryAgg[inv.slot].totalPlanCount += inv.planCount;
+      slotInventoryAgg[inv.slot].maxExistingCount = Math.max(slotInventoryAgg[inv.slot].maxExistingCount, inv.existingCount);
+      slotInventoryAgg[inv.slot].avgOccupancy += (inv.existingCount + inv.planCount) / inv.capacity;
+      slotInventoryAgg[inv.slot].dateCount += 1;
+      if (inv.overCapacity) slotInventoryAgg[inv.slot].overCapacityDates += 1;
+    });
+    Object.values(slotInventoryAgg).forEach((agg) => {
+      agg.avgOccupancy = agg.dateCount > 0 ? Math.round(agg.avgOccupancy / agg.dateCount * 100) / 100 : 0;
     });
 
     const dailyMap = {};
@@ -1710,7 +1790,7 @@ function App() {
     const dailyBreakdown = Object.values(dailyMap).sort((a, b) => a.date.localeCompare(b.date));
 
     const conflictRisk = assessConflictRisk(conflictCount, totalCount);
-    const materialRisk = assessMaterialRisk(firstPlayDate);
+    const materialRisk = assessMaterialRisk(firstPlayDate, client, adName);
 
     return {
       totalCount,
@@ -1723,6 +1803,7 @@ function App() {
       totalAmount: discount.finalAmount,
       perRecordAmount,
       inventoryOccupation,
+      slotInventoryAgg,
       conflictRisk,
       materialRisk,
       dailyBreakdown,
@@ -1732,7 +1813,7 @@ function App() {
   }
 
   function generateProposalPlans() {
-    const { client, adName, channelId, startDate, endDate, weekdays, slots, playsPerDay, baseUnitPrice, discountStrategy, discountValue, status } = proposalForm;
+    const { client, adName, channelId, startDate, endDate, weekdays, slots, playsPerDay, baseUnitPrice, discountStrategy, discountValue } = proposalForm;
 
     if (!client.trim() || !adName.trim() || !startDate || !endDate || slots.length === 0 || !baseUnitPrice) {
       alert('请填写客户、广告名称、日期范围、时段和单次播放单价');
@@ -1753,23 +1834,23 @@ function App() {
 
     const concSlots = premiumSlots.length > 0 ? premiumSlots : slots.slice(0, Math.min(2, slots.length));
     const concPlaysPerSlot = Math.max(1, Math.ceil(dailyPlays / concSlots.length));
-    const concRows = buildPlanRows(channelId, allDates, concSlots, concPlaysPerSlot, client, adName, status);
+    const concRows = buildPlanRows(channelId, allDates, concSlots, concPlaysPerSlot, client, adName);
     plans.push({
       id: uid(),
       planType: 'concentrated',
       form: { ...proposalForm },
-      ...buildPlanSummary(concRows, baseUnitPrice, discountStrategy, discountValue, channelId),
+      ...buildPlanSummary(concRows, baseUnitPrice, discountStrategy, discountValue, channelId, client, adName),
       createdAt: new Date().toISOString(),
       confirmed: false,
     });
 
     const balPlaysPerSlot = Math.max(1, Math.ceil(dailyPlays / slots.length));
-    const balRows = buildPlanRows(channelId, allDates, slots, balPlaysPerSlot, client, adName, status);
+    const balRows = buildPlanRows(channelId, allDates, slots, balPlaysPerSlot, client, adName);
     plans.push({
       id: uid(),
       planType: 'balanced',
       form: { ...proposalForm },
-      ...buildPlanSummary(balRows, baseUnitPrice, discountStrategy, discountValue, channelId),
+      ...buildPlanSummary(balRows, baseUnitPrice, discountStrategy, discountValue, channelId, client, adName),
       createdAt: new Date().toISOString(),
       confirmed: false,
     });
@@ -1777,12 +1858,12 @@ function App() {
     const extraSlots = allChannelSlots.filter((s) => !slots.includes(s));
     const spreadSlots = [...slots, ...extraSlots.slice(0, 2)];
     const spreadPlaysPerSlot = Math.max(1, Math.ceil(dailyPlays / spreadSlots.length));
-    const spreadRows = buildPlanRows(channelId, allDates, spreadSlots, spreadPlaysPerSlot, client, adName, status);
+    const spreadRows = buildPlanRows(channelId, allDates, spreadSlots, spreadPlaysPerSlot, client, adName);
     plans.push({
       id: uid(),
       planType: 'spread',
       form: { ...proposalForm },
-      ...buildPlanSummary(spreadRows, baseUnitPrice, discountStrategy, discountValue, channelId),
+      ...buildPlanSummary(spreadRows, baseUnitPrice, discountStrategy, discountValue, channelId, client, adName),
       createdAt: new Date().toISOString(),
       confirmed: false,
     });
@@ -1807,27 +1888,78 @@ function App() {
   function confirmProposalToSchedule(proposalId) {
     const proposal = proposals.find((p) => p.id === proposalId);
     if (!proposal) return;
-    if (!confirm('确认将此方案写入正式排期？此操作不可撤销。')) return;
 
-    const newRecords = proposal.rows.map((row) => ({
-      id: uid(),
-      client: row.client,
-      adName: row.adName,
-      channelId: row.channelId,
-      date: row.date,
-      slot: row.slot,
-      plays: row.plays,
-      amount: row.amount,
-      status: proposal.form.status || appConfig.primaryStatus,
-      createdAt: new Date().toISOString(),
-      timeline: [{ status: proposal.form.status || appConfig.primaryStatus, at: today, by: '方案确认' }],
-      proposalId: proposal.id,
-    }));
+    const { rows } = proposal;
+    const conflictCount = rows.filter((r) => r.hasConflict).length;
+
+    if (conflictCount > 0) {
+      const modeMsg = proposalConflictMode === 'skip'
+        ? `将跳过 ${conflictCount} 条冲突记录，仅创建 ${rows.length - conflictCount} 条正常记录`
+        : `将强制创建全部 ${rows.length} 条记录，${conflictCount} 条冲突记录将被标记`;
+      if (!confirm(`方案包含 ${conflictCount} 条冲突记录。\n${modeMsg}。\n是否继续？`)) return;
+    } else {
+      if (!confirm('确认将此方案写入正式排期？此操作不可撤销。')) return;
+    }
+
+    const rowsToCreate = proposalConflictMode === 'skip'
+      ? rows.filter((r) => !r.hasConflict)
+      : rows;
+
+    if (rowsToCreate.length === 0) {
+      alert('没有可创建的记录');
+      return;
+    }
+
+    const existingKeys = new Set(
+      records.map((r) => `${r.channelId}::${r.date}::${r.slot}::${r.client}::${r.adName}`)
+    );
+    const dateSlotRunningCount = {};
+
+    const newRecords = rowsToCreate.map((row) => {
+      const runKey = `${row.channelId}::${row.date}::${row.slot}`;
+      dateSlotRunningCount[runKey] = (dateSlotRunningCount[runKey] || 0) + 1;
+      const existingOnSlot = records.filter(
+        (r) => r.channelId === row.channelId && r.date === row.date && r.slot === row.slot && !r.coPlay
+      ).length;
+      const totalAfterCreate = existingOnSlot + dateSlotRunningCount[runKey];
+      const capacityState = getSlotCapacityState(row.channelId, row.slot, totalAfterCreate, inventory);
+
+      const dedupKey = `${row.channelId}::${row.date}::${row.slot}::${row.client}::${row.adName}`;
+      const isDuplicate = existingKeys.has(dedupKey);
+      existingKeys.add(dedupKey);
+
+      return {
+        id: uid(),
+        client: row.client,
+        adName: row.adName,
+        channelId: row.channelId,
+        date: row.date,
+        slot: row.slot,
+        plays: row.plays,
+        amount: row.amount,
+        status: proposal.form.status || appConfig.primaryStatus,
+        createdAt: new Date().toISOString(),
+        timeline: [{ status: proposal.form.status || appConfig.primaryStatus, at: today, by: '方案确认' }],
+        proposalId: proposal.id,
+        proposalPlanType: proposal.planType,
+        conflictFlag: capacityState.isOverCapacity,
+        duplicateFlag: isDuplicate,
+      };
+    });
 
     persist([...newRecords, ...records]);
 
     const next = proposals.map((p) =>
-      p.id === proposalId ? { ...p, confirmed: true, confirmedAt: new Date().toISOString() } : p
+      p.id === proposalId
+        ? {
+            ...p,
+            confirmed: true,
+            confirmedAt: new Date().toISOString(),
+            createdRecordCount: newRecords.length,
+            skippedConflictCount: rows.length - rowsToCreate.length,
+            conflictModeUsed: proposalConflictMode,
+          }
+        : p
     );
     persistProposals(next);
   }
@@ -2763,24 +2895,26 @@ function App() {
                         <div className="proposal-risk">
                           <span className="pr-label">冲突风险</span>
                           <span className={`pr-badge ${riskLevelClass(plan.conflictRisk)}`}>{riskLevelLabel(plan.conflictRisk)}</span>
-                          {plan.conflictCount > 0 && <span className="pr-detail">{plan.conflictCount}条冲突</span>}
+                          {plan.conflictCount > 0 && <span className="pr-detail">{plan.conflictCount}条 / {Math.round(plan.conflictRisk.ratio * 100)}%</span>}
                         </div>
                         <div className="proposal-risk">
                           <span className="pr-label">素材风险</span>
                           <span className={`pr-badge ${riskLevelClass(plan.materialRisk)}`}>{riskLevelLabel(plan.materialRisk)}</span>
-                          {plan.firstPlayDate && <span className="pr-detail">首播{plan.firstPlayDate}</span>}
+                          {plan.materialRisk.materialDetail
+                            ? <span className="pr-detail">素材：{plan.materialRisk.materialDetail.status}</span>
+                            : plan.firstPlayDate && <span className="pr-detail">距首播{plan.materialRisk.daysAhead}天</span>}
                         </div>
                       </div>
 
                       <div className="proposal-card-inventory">
-                        <span className="pci-title">库存占用</span>
-                        {Object.values(plan.inventoryOccupation).map((inv) => (
-                          <div key={inv.slot} className="pci-item">
-                            <span className="pci-slot">{inv.slot}</span>
+                        <span className="pci-title">库存占用（按日期平均）</span>
+                        {Object.values(plan.slotInventoryAgg).map((agg) => (
+                          <div key={agg.slot} className="pci-item">
+                            <span className="pci-slot">{agg.slot}</span>
                             <div className="pci-bar-wrap">
-                              <div className="pci-bar" style={{ width: `${Math.min(100, ((inv.existingCount + inv.planCount) / inv.capacity) * 100)}%`, background: inv.overCapacity ? '#dc2626' : inv.existingCount + inv.planCount >= inv.capacity ? '#f59e0b' : meta.color }} />
+                              <div className="pci-bar" style={{ width: `${Math.min(100, agg.avgOccupancy * 100)}%`, background: agg.overCapacityDates > 0 ? '#dc2626' : agg.avgOccupancy >= 1 ? '#f59e0b' : meta.color }} />
                             </div>
-                            <span className={`pci-count ${inv.overCapacity ? 'over' : ''}`}>{inv.existingCount + inv.planCount}/{inv.capacity}</span>
+                            <span className={`pci-count ${agg.overCapacityDates > 0 ? 'over' : ''}`}>{agg.maxExistingCount + agg.totalPlanCount}/{agg.capacity}{agg.overCapacityDates > 0 && ` · ${agg.overCapacityDates}天超`}</span>
                           </div>
                         ))}
                       </div>
@@ -2895,6 +3029,29 @@ function App() {
 
           {proposalStep === 'saved' && (
             <div className="proposal-saved-list">
+              {proposals.length > 0 && (
+                <div className="proposal-conflict-mode">
+                  <span className="pcm-label">写入排期冲突处理：</span>
+                  <label className={`conflict-mode-option ${proposalConflictMode === 'skip' ? 'active' : ''}`}>
+                    <input
+                      type="radio"
+                      name="proposalConflictMode"
+                      checked={proposalConflictMode === 'skip'}
+                      onChange={() => setProposalConflictMode('skip')}
+                    />
+                    <span>跳过冲突记录</span>
+                  </label>
+                  <label className={`conflict-mode-option ${proposalConflictMode === 'create' ? 'active' : ''}`}>
+                    <input
+                      type="radio"
+                      name="proposalConflictMode"
+                      checked={proposalConflictMode === 'create'}
+                      onChange={() => setProposalConflictMode('create')}
+                    />
+                    <span>强制创建并标记</span>
+                  </label>
+                </div>
+              )}
               {proposals.length === 0 ? (
                 <div className="proposal-empty">
                   <Calculator size={36} />
@@ -2926,9 +3083,22 @@ function App() {
                         <span className="amount">合同额：{money(proposal.totalAmount)}</span>
                       </div>
                       <div className="proposal-saved-risks">
-                        <span>冲突风险：<span className={`pr-badge ${riskLevelClass(proposal.conflictRisk)}`}>{riskLevelLabel(proposal.conflictRisk)}</span></span>
-                        <span>素材风险：<span className={`pr-badge ${riskLevelClass(proposal.materialRisk)}`}>{riskLevelLabel(proposal.materialRisk)}</span></span>
+                        <span>冲突风险：<span className={`pr-badge ${riskLevelClass(proposal.conflictRisk)}`}>{riskLevelLabel(proposal.conflictRisk)}</span>
+                          {proposal.conflictCount > 0 && ` · ${proposal.conflictCount}条/${proposal.totalCount}条`}
+                        </span>
+                        <span>素材风险：<span className={`pr-badge ${riskLevelClass(proposal.materialRisk)}`}>{riskLevelLabel(proposal.materialRisk)}</span>
+                          {proposal.materialRisk.materialDetail
+                            ? ` · 素材：${proposal.materialRisk.materialDetail.status}`
+                            : proposal.firstPlayDate && ` · 距首播${proposal.materialRisk.daysAhead}天`}
+                        </span>
                       </div>
+                      {proposal.confirmed && proposal.createdRecordCount !== undefined && (
+                        <div className="proposal-saved-confirmed-meta">
+                          <span>已创建：{proposal.createdRecordCount}条</span>
+                          {proposal.skippedConflictCount > 0 && <span>跳过冲突：{proposal.skippedConflictCount}条</span>}
+                          <span>策略：{proposal.conflictModeUsed === 'skip' ? '跳过冲突' : '强制创建'}</span>
+                        </div>
+                      )}
                       <div className="proposal-saved-actions" onClick={(e) => e.stopPropagation()}>
                         {!proposal.confirmed && (
                           <button className="primary compact" type="button" onClick={() => confirmProposalToSchedule(proposal.id)}>
