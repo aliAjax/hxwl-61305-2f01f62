@@ -259,10 +259,13 @@ function persistInventory(next) {
 
 const customerStorage = 'hxwl-61305-customer-archive';
 
+const customerLevels = ['A级', 'B级', 'C级', 'D级'];
+const customerIndustries = ['零售', '餐饮', '教育', '医疗', '金融', '房地产', '汽车', '家居', '其他'];
+
 const defaultCustomers = [
-  { name: '蓝海家居', contact: '张经理', phone: '138-0001-0001', preferredSlot: '08:00-09:00', historicalAmount: 3600 },
-  { name: '北城眼镜', contact: '李总', phone: '139-0002-0002', preferredSlot: '18:00-19:00', historicalAmount: 2800 },
-  { name: '云上烘焙', contact: '王店长', phone: '137-0003-0003', preferredSlot: '12:00-13:00', historicalAmount: 1600 },
+  { name: '蓝海家居', contact: '张经理', phone: '138-0001-0001', preferredSlot: '08:00-09:00', historicalAmount: 3600, level: 'A级', industry: '家居' },
+  { name: '北城眼镜', contact: '李总', phone: '139-0002-0002', preferredSlot: '18:00-19:00', historicalAmount: 2800, level: 'B级', industry: '零售' },
+  { name: '云上烘焙', contact: '王店长', phone: '137-0003-0003', preferredSlot: '12:00-13:00', historicalAmount: 1600, level: 'C级', industry: '餐饮' },
 ];
 
 const materialStorage = 'hxwl-61305-ad-materials';
@@ -371,7 +374,16 @@ function loadCustomers() {
   const raw = localStorage.getItem(customerStorage);
   if (raw) {
     try {
-      return JSON.parse(raw);
+      const data = JSON.parse(raw);
+      const migrated = data.map((c) => ({
+        ...c,
+        level: c.level || '',
+        industry: c.industry || '',
+      }));
+      if (JSON.stringify(data) !== JSON.stringify(migrated)) {
+        localStorage.setItem(customerStorage, JSON.stringify(migrated));
+      }
+      return migrated;
     } catch {
       return defaultCustomers.map((c) => ({ ...c, id: uid() }));
     }
@@ -509,7 +521,7 @@ function App() {
   const [filters, setFilters] = useState({ query: '', status: '全部', channel: '全部' });
   const [selected, setSelected] = useState(null);
   const [customers, setCustomers] = useState(loadCustomers);
-  const [customerForm, setCustomerForm] = useState({ name: '', contact: '', phone: '', preferredSlot: '', historicalAmount: '' });
+  const [customerForm, setCustomerForm] = useState({ name: '', contact: '', phone: '', preferredSlot: '', historicalAmount: '', level: '', industry: '' });
   const [editingCustomer, setEditingCustomer] = useState(null);
   const [selectedDate, setSelectedDate] = useState(null);
   const [weekOffset, setWeekOffset] = useState(0);
@@ -913,7 +925,7 @@ function App() {
     if (!customerForm.name.trim()) return;
     const newCustomer = { id: uid(), ...customerForm, historicalAmount: Number(customerForm.historicalAmount || 0) };
     persistCustomers([...customers, newCustomer]);
-    setCustomerForm({ name: '', contact: '', phone: '', preferredSlot: '', historicalAmount: '' });
+    setCustomerForm({ name: '', contact: '', phone: '', preferredSlot: '', historicalAmount: '', level: '', industry: '' });
   }
 
   function startEditCustomer(customer) {
@@ -923,7 +935,9 @@ function App() {
       contact: customer.contact,
       phone: customer.phone,
       preferredSlot: customer.preferredSlot || '',
-      historicalAmount: customer.historicalAmount || ''
+      historicalAmount: customer.historicalAmount || '',
+      level: customer.level || '',
+      industry: customer.industry || '',
     });
   }
 
@@ -937,12 +951,12 @@ function App() {
     } : c);
     persistCustomers(next);
     setEditingCustomer(null);
-    setCustomerForm({ name: '', contact: '', phone: '', preferredSlot: '', historicalAmount: '' });
+    setCustomerForm({ name: '', contact: '', phone: '', preferredSlot: '', historicalAmount: '', level: '', industry: '' });
   }
 
   function cancelEditCustomer() {
     setEditingCustomer(null);
-    setCustomerForm({ name: '', contact: '', phone: '', preferredSlot: '', historicalAmount: '' });
+    setCustomerForm({ name: '', contact: '', phone: '', preferredSlot: '', historicalAmount: '', level: '', industry: '' });
   }
 
   function removeCustomer(id) {
@@ -2227,6 +2241,32 @@ function App() {
               </select>
             </label>
           </div>
+          {form.client && customers.find((c) => c.name === form.client) && (() => {
+            const c = customers.find((c) => c.name === form.client);
+            return (
+              <div className="client-info-card">
+                <div className="client-info-title">客户档案信息</div>
+                <div className="client-info-row">
+                  <span className="client-info-label">联系人：</span>
+                  <span className="client-info-value">{c.contact || '未设置'}</span>
+                  <span className="client-info-label">电话：</span>
+                  <span className="client-info-value">{c.phone || '未设置'}</span>
+                </div>
+                <div className="client-info-row">
+                  <span className="client-info-label">常用时段：</span>
+                  <span className="client-info-value">{c.preferredSlot || '不限'}</span>
+                  <span className="client-info-label">历史合同额：</span>
+                  <span className="client-info-value">{money(Number(c.historicalAmount || 0))}</span>
+                </div>
+                <div className="client-info-row">
+                  <span className="client-info-label">客户等级：</span>
+                  <span className="client-info-value">{c.level || '未设置'}</span>
+                  <span className="client-info-label">行业类型：</span>
+                  <span className="client-info-value">{c.industry || '未设置'}</span>
+                </div>
+              </div>
+            );
+          })()}
           <button className="primary" type="submit"><Plus size={18} />新增</button>
           <p className="hint">{appConfig.note}</p>
         </form>
@@ -2475,6 +2515,32 @@ function App() {
                   placeholder="蓝海家居"
                 />
               </div>
+              {batchForm.client && customers.find((c) => c.name === batchForm.client) && (() => {
+                const c = customers.find((c) => c.name === batchForm.client);
+                return (
+                  <div className="client-info-card">
+                    <div className="client-info-title">客户档案信息</div>
+                    <div className="client-info-row">
+                      <span className="client-info-label">联系人：</span>
+                      <span className="client-info-value">{c.contact || '未设置'}</span>
+                      <span className="client-info-label">电话：</span>
+                      <span className="client-info-value">{c.phone || '未设置'}</span>
+                    </div>
+                    <div className="client-info-row">
+                      <span className="client-info-label">常用时段：</span>
+                      <span className="client-info-value">{c.preferredSlot || '不限'}</span>
+                      <span className="client-info-label">历史合同额：</span>
+                      <span className="client-info-value">{money(Number(c.historicalAmount || 0))}</span>
+                    </div>
+                    <div className="client-info-row">
+                      <span className="client-info-label">客户等级：</span>
+                      <span className="client-info-value">{c.level || '未设置'}</span>
+                      <span className="client-info-label">行业类型：</span>
+                      <span className="client-info-value">{c.industry || '未设置'}</span>
+                    </div>
+                  </div>
+                );
+              })()}
             </label>
 
             <label className="batch-label">
@@ -2765,6 +2831,32 @@ function App() {
                     </select>
                     <input type="text" value={proposalForm.client} onChange={(e) => setProposalForm({ ...proposalForm, client: e.target.value })} placeholder="蓝海家居" />
                   </div>
+                  {proposalForm.client && customers.find((c) => c.name === proposalForm.client) && (() => {
+                    const c = customers.find((c) => c.name === proposalForm.client);
+                    return (
+                      <div className="client-info-card">
+                        <div className="client-info-title">客户档案信息</div>
+                        <div className="client-info-row">
+                          <span className="client-info-label">联系人：</span>
+                          <span className="client-info-value">{c.contact || '未设置'}</span>
+                          <span className="client-info-label">电话：</span>
+                          <span className="client-info-value">{c.phone || '未设置'}</span>
+                        </div>
+                        <div className="client-info-row">
+                          <span className="client-info-label">常用时段：</span>
+                          <span className="client-info-value">{c.preferredSlot || '不限'}</span>
+                          <span className="client-info-label">历史合同额：</span>
+                          <span className="client-info-value">{money(Number(c.historicalAmount || 0))}</span>
+                        </div>
+                        <div className="client-info-row">
+                          <span className="client-info-label">客户等级：</span>
+                          <span className="client-info-value">{c.level || '未设置'}</span>
+                          <span className="client-info-label">行业类型：</span>
+                          <span className="client-info-value">{c.industry || '未设置'}</span>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </label>
                 <label>
                   <span>广告名称</span>
@@ -3271,6 +3363,20 @@ function App() {
                 <span>历史合同额（元）</span>
                 <input type="number" value={customerForm.historicalAmount} onChange={(event) => setCustomerForm({ ...customerForm, historicalAmount: event.target.value })} placeholder="50000" />
               </label>
+              <label>
+                <span>客户等级</span>
+                <select value={customerForm.level} onChange={(event) => setCustomerForm({ ...customerForm, level: event.target.value })}>
+                  <option value="">未设置</option>
+                  {customerLevels.map((l) => <option key={l}>{l}</option>)}
+                </select>
+              </label>
+              <label>
+                <span>行业类型</span>
+                <select value={customerForm.industry} onChange={(event) => setCustomerForm({ ...customerForm, industry: event.target.value })}>
+                  <option value="">未设置</option>
+                  {customerIndustries.map((i) => <option key={i}>{i}</option>)}
+                </select>
+              </label>
             </div>
             <div className="archive-form-actions">
               <button className="primary" type="submit">
@@ -3292,6 +3398,10 @@ function App() {
                     <p>{customer.contact}<Phone size={12} />{customer.phone}</p>
                   </div>
                   <span className="customer-slot">{customer.preferredSlot || '不限'}</span>
+                </div>
+                <div className="customer-meta">
+                  <span className="customer-tag">等级：{customer.level || '未设置'}</span>
+                  <span className="customer-tag">行业：{customer.industry || '未设置'}</span>
                 </div>
                 <p className="customer-amount">历史合同额：{money(Number(customer.historicalAmount || 0))}</p>
                 <div className="actions" onClick={(event) => event.stopPropagation()}>

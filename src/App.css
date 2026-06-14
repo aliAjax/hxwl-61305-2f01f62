@@ -504,6 +504,55 @@ textarea { min-height: 76px; resize: vertical; }
   font-weight: 600;
 }
 
+.customer-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.customer-tag {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-weight: 500;
+}
+
+.client-info-card {
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+}
+
+.client-info-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #166534;
+  margin-bottom: 6px;
+}
+
+.client-info-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 12px;
+  line-height: 1.8;
+}
+
+.client-info-label {
+  color: #667085;
+}
+
+.client-info-value {
+  color: #111827;
+  font-weight: 500;
+}
+
 .date-groups {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
